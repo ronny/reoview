@@ -75,13 +75,58 @@ test clip into a `VLCVideoView` in a window, and read `pmset -g assertions` afte
 6 seconds of playback. The probe held no assertion. Vivaldi held three at the
 same moment.
 
+## VLCKit 4.0 holds its own assertion
+
+The app moved to VLCKit 4.0 to play the telephoto lens. That build brings back
+the problem, from a place no libvlc option reaches.
+
+`VLCMediaPlayer.m` in VLCKit itself does this, macOS only and unconditionally:
+
+```objc
+- (void)mediaPlayerStateChanged:(const VLCMediaPlayerState)newState {
+    if (newState == VLCMediaPlayerStatePlaying) {
+        [self preventDisplaySleep];
+    } else {
+        [self allowDisplaySleep];
+    }
+}
+```
+
+`preventDisplaySleep` calls `IOPMAssertionCreateWithName` with
+`kIOPMAssertionTypeNoDisplaySleep`, named "VLC Media Playback". No header
+exposes a switch for it, and the assertion id is a file static, so it is shared
+by every player in the process.
+
+Three facts about libvlc options, none of which help:
+
+- libvlc 4.0 changed `disable-screensaver` from a boolean to an integer, with
+  the values 0 for never, 2 for fullscreen, and 1 for always. The default is 1.
+- `--no-disable-screensaver` is therefore rejected, and a rejected option stops
+  libvlc initialising at all. `--disable-screensaver=0` is the accepted form.
+- That option does work. It stops libvlc loading its own `iokit_inhibit`
+  module. It has no effect on the assertion above, which is not libvlc's.
+
+VLCKit 3.7.3 carries none of this code, which is why the earlier measurements
+were clean.
+
+## The countermeasure
+
+`DisplaySleep.stopVLCKitHoldingAssertions()` replaces the implementation of
+`preventDisplaySleep` with one that does nothing, before any player is built.
+`allowDisplaySleep` is left alone, because it returns early when no assertion is
+held. On VLCKit 3.x the method does not exist and the call does nothing.
+
+`DisplaySleepTests` guards it by calling the method on a real `VLCMediaPlayer`
+and counting this process's assertions through `IOPMCopyAssertionsByProcess`.
+
 ## Confirmed against the real app, 2026-09-06
 
-The app played two RTSP streams from the NVR, one H.264 and one H.265. Measured
-while both played:
+On VLCKit 3.7.3 the app played two RTSP streams from the NVR, one H.264 and one
+H.265, and held no assertion. On VLCKit 4.0, with all three tiles playing and
+`preventDisplaySleep` neutralised, the result is the same:
 
 ```
-app pid 25475: no assertion of any kind
+app pid 84636: no assertion of any kind
 pid 31227(Vivaldi): NoDisplaySleepAssertion named: "Video Wake Lock"   x3
 ```
 

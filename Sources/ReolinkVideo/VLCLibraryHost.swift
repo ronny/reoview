@@ -46,6 +46,7 @@ public enum VLCLibraryHost {
 
     public static let shared: VLCLibrary = {
         enforceOptionsInUserDefaults()
+        DisplaySleep.stopVLCKitHoldingAssertions()
         let library = VLCLibrary(options: options)
         library.setHumanReadableName(
             "ReoView",
