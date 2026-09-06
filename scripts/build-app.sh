@@ -250,6 +250,14 @@ else
   echo "Signing with ${identity}"
 fi
 
+# The microphone entitlement has to be on the app itself, not on the nested
+# frameworks, so this is added after the nested loop below has run.
+entitlements="${repo_root}/Resources/ReoView.entitlements"
+if [[ ! -f "${entitlements}" ]]; then
+  echo "No ${entitlements}. Two-way talk needs the audio-input entitlement." >&2
+  exit 1
+fi
+
 nested=0
 while IFS= read -r -d '' target; do
   codesign "${codesign_args[@]}" "${target}"
@@ -271,7 +279,7 @@ if [[ ${nested} -eq 0 ]]; then
 fi
 
 codesign "${codesign_args[@]}" "${embedded_fw}/Versions/A"
-codesign "${codesign_args[@]}" "${app}"
+codesign "${codesign_args[@]}" --entitlements "${entitlements}" "${app}"
 
 # --- verify -----------------------------------------------------------------
 

@@ -37,6 +37,8 @@
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ReoView uses the microphone to talk to people at your Reolink doorbell.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ReoView connects to your Reolink NVR on the local network to show camera video.</string>
 	<key>NSPrincipalClass</key>
