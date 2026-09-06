@@ -40,6 +40,10 @@ final class AppState {
     let events = EventStatusStore()
     let notifier = VisitorNotifier()
 
+    /// The one talk session in the app. It opens port 9000 on first use and
+    /// gives it back when idle; see `TalkController`.
+    let talk: TalkController
+
     @ObservationIgnored private let makePlayer: @MainActor () -> any VideoPlayer
     @ObservationIgnored private var client: NVRClient?
     @ObservationIgnored private var resolver: StreamResolver?
@@ -55,6 +59,11 @@ final class AppState {
     init(config: ConfigStore = ConfigStore(), makePlayer: @escaping @MainActor () -> any VideoPlayer) {
         self.config = config
         self.makePlayer = makePlayer
+        self.talk = TalkController(config: config)
+        // A refused talk reuses the one global banner, the same as a refused
+        // control command.
+        talk.onFailure = { [weak self] message in self?.noteControlFailure(message) }
+        talk.onSuccess = { [weak self] in self?.clearControlFailure() }
     }
 
     // MARK: - Reachability
@@ -79,6 +88,10 @@ final class AppState {
             self.shouldRunVideo = shouldRun
             self.syncRunningPlayers()
             self.poller?.setVisible(shouldRun)
+            // A hidden window or a sleeping display cannot be holding the
+            // push-to-talk button, and the camera's audio path must not stay
+            // open behind it.
+            if !shouldRun { self.talk.stop() }
         }
         monitor.start()
         presence = monitor
@@ -143,6 +156,10 @@ final class AppState {
         poller = nil
         controls?.shutdown()
         controls = nil
+        // Waits for the talk slot to be released before the process or the
+        // connection goes away.
+        await talk.shutdown()
+        talk.setCapabilities(nil)
         clearControlFailure()
         events.clear()
         for controller in controllers.values {
@@ -268,6 +285,7 @@ final class AppState {
 
         self.capabilities = capabilities
         self.cameras = cameras
+        talk.setCapabilities(capabilities)
         camerasByID = Dictionary(cameras.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         sourcesByID = [:]
@@ -510,9 +528,10 @@ final class AppState {
         let target = mainQualitySource(for: source)
         controller(for: target)
         // Focusing takes the grid off screen, which can remove a held PTZ
-        // button. Its `onDisappear` also stops the camera; this does not wait
-        // for SwiftUI to get round to it.
+        // or push-to-talk button. Their `onDisappear` also releases; this does
+        // not wait for SwiftUI to get round to it.
         controls?.stopMove()
+        talk.stop()
         focusedSourceID = target.id
         syncRunningPlayers()
     }
@@ -529,6 +548,7 @@ final class AppState {
     func unfocus() {
         guard focusedSourceID != nil else { return }
         controls?.stopMove()
+        talk.stop()
         focusedSourceID = nil
         syncRunningPlayers()
     }

@@ -30,6 +30,15 @@ struct TileView: View {
                         .padding(.vertical, ui.length(4))
                         .background(.black.opacity(0.45), in: .rect(cornerRadius: 6))
 
+                    // Outside `TileControls`, which fades when the pointer
+                    // leaves and is disabled with the rest of the controls when
+                    // the NVR drops. An open talk session must always be
+                    // visible, and must always be stoppable.
+                    if let camera = state.camera(for: controller.source),
+                       state.talk.isActive(cameraID: camera.id) {
+                        TalkIndicator(activity: state.talk.activity) { state.talk.stop() }
+                    }
+
                     Spacer()
 
                     Button {

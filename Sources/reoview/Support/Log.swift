@@ -10,4 +10,5 @@ enum Log {
     static let keychain = Logger(subsystem: subsystem, category: "keychain")
     static let player = Logger(subsystem: subsystem, category: "player")
     static let presence = Logger(subsystem: subsystem, category: "presence")
+    static let talk = Logger(subsystem: subsystem, category: "talk")
 }

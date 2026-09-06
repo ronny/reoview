@@ -80,8 +80,18 @@ extension StreamSelection {
 struct AppConfig: Codable, Equatable, Sendable {
     /// Version 2 added `layout` and `streamSelectionByCameraID`, and dropped
     /// the saved tile order, which is now derived from the selections.
-    /// Version 3 added `uiScale`.
-    static let currentVersion = 3
+    /// Version 3 added `uiScale`. Version 4 added `talkPhrases`.
+    static let currentVersion = 4
+
+    /// What a fresh install offers to say through the doorbell. A config
+    /// written before version 4 has no phrases key at all and gets these; a
+    /// version 4 config always writes the key, so an emptied list stays empty.
+    static let defaultTalkPhrases = [
+        "Hello, we will be with you in a moment.",
+        "Please leave the parcel by the front door. Thank you.",
+        "Sorry, we cannot come to the door right now.",
+        "Thank you. Goodbye.",
+    ]
 
     /// Under 0.8 the chrome is hard to read; over 2.0 the controls stop fitting
     /// a tile in the narrowest layout.
@@ -120,6 +130,10 @@ struct AppConfig: Codable, Equatable, Sendable {
         didSet { uiScale = Self.clampedUIScale(uiScale) }
     }
 
+    /// The phrases the doorbell can be made to speak, in the order they are
+    /// offered. Edited in Settings.
+    var talkPhrases: [String]
+
     init(
         version: Int = AppConfig.currentVersion,
         host: String = "",
@@ -129,7 +143,8 @@ struct AppConfig: Codable, Equatable, Sendable {
         windowFrame: String? = nil,
         layout: LayoutMode = .grid,
         streamSelectionByCameraID: [String: StreamSelection] = [:],
-        uiScale: Double = 1
+        uiScale: Double = 1,
+        talkPhrases: [String] = AppConfig.defaultTalkPhrases
     ) {
         self.version = version
         self.host = host
@@ -140,6 +155,7 @@ struct AppConfig: Codable, Equatable, Sendable {
         self.layout = layout
         self.streamSelectionByCameraID = streamSelectionByCameraID
         self.uiScale = Self.clampedUIScale(uiScale)
+        self.talkPhrases = talkPhrases
     }
 
     enum CodingKeys: String, CodingKey {
@@ -152,6 +168,7 @@ struct AppConfig: Codable, Equatable, Sendable {
         case layout
         case streamSelectionByCameraID
         case uiScale
+        case talkPhrases
     }
 
     /// Every field but the version is optional, so a config written by an older
@@ -172,6 +189,8 @@ struct AppConfig: Codable, Equatable, Sendable {
         streamSelectionByCameraID = try container
             .decodeIfPresent([String: StreamSelection].self, forKey: .streamSelectionByCameraID) ?? [:]
         uiScale = Self.clampedUIScale(try container.decodeIfPresent(Double.self, forKey: .uiScale) ?? 1)
+        talkPhrases = try container
+            .decodeIfPresent([String].self, forKey: .talkPhrases) ?? Self.defaultTalkPhrases
     }
 }
 

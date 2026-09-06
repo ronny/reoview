@@ -40,6 +40,10 @@ struct SettingsView: View {
             }
             .formStyle(.grouped)
 
+            Text("Talk").font(ui.font(13, weight: .semibold))
+
+            PhrasesEditor()
+
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -59,6 +63,7 @@ struct SettingsView: View {
     }
 
     private var scale: Binding<Double> {
+
         Binding(get: { state.uiScale }, set: { state.uiScale = $0 })
     }
 
@@ -80,5 +85,79 @@ struct SettingsView: View {
             isSaving = false
             dismiss()
         }
+    }
+}
+
+/// The phrases the doorbell can be made to say.
+///
+/// Edited in place, like the text size: there is nothing to send to the NVR, so
+/// there is nothing to wait for a Save button for.
+private struct PhrasesEditor: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.uiScale) private var ui
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ui.length(6)) {
+            ScrollView {
+                VStack(spacing: ui.length(4)) {
+                    ForEach(phrases.indices, id: \.self) { index in
+                        HStack(spacing: ui.length(6)) {
+                            TextField("Phrase", text: phrase(at: index))
+                                .textFieldStyle(.roundedBorder)
+                            Button {
+                                remove(at: index)
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove this phrase")
+                            .accessibilityLabel("Remove phrase \(index + 1)")
+                        }
+                    }
+                }
+                .padding(ui.length(6))
+            }
+            .frame(height: ui.length(140))
+            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 6))
+
+            HStack(spacing: ui.length(8)) {
+                Button("Add Phrase") { add() }
+                    .controlSize(.small)
+                    .help("Add a phrase the camera can say")
+                Button("Restore Defaults") { restoreDefaults() }
+                    .controlSize(.small)
+                    .help("Put the phrases ReoView ships with back")
+                Spacer()
+            }
+
+            Text("A phrase is spoken by this Mac and sent to the camera speaker.")
+                .font(ui.font(10))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var phrases: [String] { state.config.config.talkPhrases }
+
+    private func phrase(at index: Int) -> Binding<String> {
+        Binding(
+            get: { state.config.config.talkPhrases[safe: index] ?? "" },
+            set: { new in
+                guard state.config.config.talkPhrases.indices.contains(index) else { return }
+                state.config.config.talkPhrases[index] = new
+            }
+        )
+    }
+
+    private func add() {
+        state.config.config.talkPhrases.append("")
+    }
+
+    private func remove(at index: Int) {
+        guard state.config.config.talkPhrases.indices.contains(index) else { return }
+        state.config.config.talkPhrases.remove(at: index)
+    }
+
+    private func restoreDefaults() {
+        state.config.config.talkPhrases = AppConfig.defaultTalkPhrases
     }
 }

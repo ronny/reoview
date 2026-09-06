@@ -18,8 +18,13 @@ struct TileControls: View {
 
     var body: some View {
         if let controls = state.controls, let capabilities = state.capabilities {
-            ControlsOverlay(camera: camera, controls: controls, capabilities: capabilities)
-                .disabled(!state.isNVRReachable)
+            ControlsOverlay(
+                camera: camera,
+                controls: controls,
+                capabilities: capabilities,
+                talk: state.talk
+            )
+            .disabled(!state.isNVRReachable)
         }
     }
 }
@@ -33,6 +38,7 @@ private enum ControlGroup: Hashable {
     case guardPosition
     case quickReply
     case volume
+    case talk
 }
 
 private struct ControlsOverlay: View {
@@ -41,6 +47,7 @@ private struct ControlsOverlay: View {
     let camera: Camera
     let controls: ControlsStore
     let capabilities: Capabilities
+    let talk: TalkController
 
     @State private var open: ControlGroup?
     @State private var isHovering = false
@@ -77,9 +84,12 @@ private struct ControlsOverlay: View {
             // The tile can go away mid-press: a layout change, a focus change,
             // or the panel itself collapsing. `PtzButton.onDisappear` covers the
             // pad, and this covers the whole overlay.
+            // A talk session left open holds the camera's audio path, the
+            // same way a held PTZ button leaves the camera turning.
             .onDisappear {
                 removeEscapeMonitor()
                 controls.stopMove()
+                talk.stop()
             }
         }
     }
@@ -129,6 +139,9 @@ private struct ControlsOverlay: View {
                     tint: .red,
                     isBusy: values.busy.contains(.siren)
                 ) { controls.setSiren(!values.sirenOn, cameraID: camera.id) }
+            }
+            if hasTalk {
+                groupIcon(.talk, "mic", "Talk to the camera, or say one of the saved phrases")
             }
             if hasQuickReply {
                 groupIcon(.quickReply, "text.bubble", "Play a recorded reply on the camera speaker")
@@ -181,6 +194,8 @@ private struct ControlsOverlay: View {
                 quickReplyPanel
             case .volume:
                 volumePanel
+            case .talk:
+                TalkPanel(camera: camera, talk: talk)
             }
         }
         .font(ui.font(13))
@@ -293,11 +308,13 @@ private struct ControlsOverlay: View {
     /// the stop goes out before the pad can leave.
     private func toggle(_ group: ControlGroup) {
         controls.stopMove()
+        talk.stop()
         open = open == group ? nil : group
     }
 
     private func close() {
         controls.stopMove()
+        talk.stop()
         open = nil
     }
 
@@ -353,6 +370,8 @@ private struct ControlsOverlay: View {
         capabilities.supportsQuickReplyPlayback(channel: channel) && !values.quickReplies.isEmpty
     }
 
+    private var hasTalk: Bool { talk.isAvailable(for: camera) }
+
     private var hasVolume: Bool {
         capabilities.supportsSpeakerVolume(channel: channel) && values.hasSpeakerVolume
     }
@@ -364,6 +383,7 @@ private struct ControlsOverlay: View {
     private var hasAnyControl: Bool {
         hasPtz || hasZoom || hasPresets || hasGuard || hasFloodlight
             || hasAutoTrack || hasSiren || hasQuickReply || hasVolume || hasManualRecord
+            || hasTalk
     }
 
     private var selectedQuickReplyName: String {
@@ -591,5 +611,155 @@ private struct FlowLayout: Layout {
 private extension Double {
     func clamped(to bounds: ClosedRange<Double>) -> Double {
         Swift.min(Swift.max(self, bounds.lowerBound), bounds.upperBound)
+    }
+}
+
+// MARK: - Talk
+
+/// Push to talk, and the saved phrases.
+///
+/// The button follows the same press-and-release discipline as the PTZ pad: a
+/// zero-distance drag reports both halves, `onDisappear` covers the panel going
+/// away mid-press, and `TalkController` watches for the releases that reach
+/// neither.
+private struct TalkPanel: View {
+    @Environment(\.uiScale) private var ui
+
+    let camera: Camera
+    let talk: TalkController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ui.length(6)) {
+            HStack(spacing: ui.length(6)) {
+                PushToTalkButton(
+                    isHeld: talk.isPushToTalkHeld,
+                    onPress: { talk.startPushToTalk(to: camera) },
+                    onRelease: { talk.stopPushToTalk() }
+                )
+
+                Button {
+                    talk.stop()
+                } label: {
+                    Image(systemName: "stop.fill")
+                }
+                .controlSize(.small)
+                .disabled(!talk.isActive(cameraID: camera.id))
+                .help("Stop talking and release the camera")
+                .accessibilityLabel("Stop talking")
+            }
+
+            if !talk.phrases.isEmpty {
+                Divider()
+                FlowLayout(spacing: ui.length(4)) {
+                    ForEach(Array(talk.phrases.enumerated()), id: \.offset) { _, phrase in
+                        Button(shortened(phrase)) {
+                            talk.speak(phrase, to: camera)
+                        }
+                        .controlSize(.small)
+                        .disabled(talk.isPushToTalkHeld)
+                        .help("Say \u{201C}\(phrase)\u{201D} through the camera speaker")
+                    }
+                }
+                .frame(maxWidth: ui.length(320))
+            }
+        }
+    }
+
+    /// A phrase is a sentence; a button in a tile corner is not.
+    private func shortened(_ phrase: String) -> String {
+        phrase.count <= 28 ? phrase : String(phrase.prefix(27)) + "\u{2026}"
+    }
+}
+
+private struct PushToTalkButton: View {
+    @Environment(\.uiScale) private var ui
+
+    let isHeld: Bool
+    var onPress: () -> Void
+    var onRelease: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        HStack(spacing: ui.length(5)) {
+            Image(systemName: isHeld ? "mic.fill" : "mic")
+            Text("Hold to Talk")
+        }
+        .font(ui.font(12, weight: .semibold))
+        .foregroundStyle(isHeld ? Color.white : .primary)
+        .padding(.horizontal, ui.length(10))
+        .frame(height: ui.length(24))
+        .background(
+            isHeld ? Color.red.opacity(0.9) : Color.secondary.opacity(0.18),
+            in: .rect(cornerRadius: 5)
+        )
+        .contentShape(.rect)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in press() }
+                .onEnded { _ in release() }
+        )
+        .onDisappear { release() }
+        .help("Hold this button and speak. Release to stop.")
+        .accessibilityLabel("Hold to talk")
+    }
+
+    private func press() {
+        guard !isPressed else { return }
+        isPressed = true
+        onPress()
+    }
+
+    private func release() {
+        guard isPressed else { return }
+        isPressed = false
+        onRelease()
+    }
+}
+
+/// The unmistakable part: while the camera's speaker is open, the tile carries
+/// a red badge with a stop control, outside the controls overlay that fades
+/// when the pointer leaves.
+struct TalkIndicator: View {
+    @Environment(\.uiScale) private var ui
+
+    let activity: TalkActivity
+    var onStop: () -> Void
+
+    var body: some View {
+        HStack(spacing: ui.length(6)) {
+            Image(systemName: symbol)
+                .symbolEffect(.pulse, options: .repeating)
+            Text(activity.label)
+            Button(action: onStop) {
+                Image(systemName: "stop.circle.fill")
+                    .font(ui.font(13))
+            }
+            .buttonStyle(.plain)
+            .help("Stop talking and release the camera")
+            .accessibilityLabel("Stop talking")
+        }
+        .font(ui.font(11, weight: .semibold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, ui.length(8))
+        .padding(.vertical, ui.length(4))
+        .background(Color.red.opacity(0.9), in: .capsule)
+        .help(helpText)
+    }
+
+    private var symbol: String {
+        switch activity {
+        case .speaking: "speaker.wave.2.fill"
+        default: "mic.fill"
+        }
+    }
+
+    private var helpText: String {
+        switch activity {
+        case .connecting: "Opening the talk channel to the camera"
+        case .listening: "Your microphone is going to the camera speaker"
+        case .speaking(let phrase): "Saying \u{201C}\(phrase)\u{201D}"
+        default: "Talking to the camera"
+        }
     }
 }
