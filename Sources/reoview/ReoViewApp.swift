@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installFullScreenKey()
         restoreWindowFrame()
         state.startPresenceMonitoring()
+        state.notifier.activate()
         Task { await state.connect() }
     }
 

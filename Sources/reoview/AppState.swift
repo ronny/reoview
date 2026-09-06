@@ -30,8 +30,18 @@ final class AppState {
     /// Set while one tile fills the window on its main stream.
     private(set) var focusedSourceID: String?
 
+    /// The camera the controls panel acts on. Focusing a tile moves it.
+    private(set) var selectedCameraID: String?
+
+    private(set) var controls: ControlsStore?
+
+    /// The last control command that the NVR refused. It shares the one global
+    /// banner rather than adding a second place to look for a failure.
+    private(set) var controlFailure: String?
+
     let config: ConfigStore
     let events = EventStatusStore()
+    let notifier = VisitorNotifier()
 
     @ObservationIgnored private let makePlayer: @MainActor () -> any VideoPlayer
     @ObservationIgnored private var client: NVRClient?
@@ -41,7 +51,9 @@ final class AppState {
     @ObservationIgnored private var camerasByID: [String: Camera] = [:]
     @ObservationIgnored private var codecBySourceID: [String: VideoCodec] = [:]
     @ObservationIgnored private var presence: PresenceMonitor?
+    @ObservationIgnored private var poller: EventPoller?
     @ObservationIgnored private var shouldRunVideo = true
+    @ObservationIgnored private var controlFailureTask: Task<Void, Never>?
 
     init(config: ConfigStore = ConfigStore(), makePlayer: @escaping @MainActor () -> any VideoPlayer) {
         self.config = config
@@ -52,12 +64,13 @@ final class AppState {
 
     var isNVRReachable: Bool { connection == .connected }
 
-    /// One global banner for a dead NVR. A dead tile uses its own overlay.
+    /// One global banner for a dead NVR. A dead tile uses its own overlay, and
+    /// a refused control borrows this one.
     var bannerMessage: String? {
         switch connection {
         case .unreachable(let message): message
         case .idle where config.config.host.isEmpty: "No NVR configured. Open Settings."
-        default: nil
+        default: controlFailure
         }
     }
 
@@ -68,6 +81,7 @@ final class AppState {
             guard let self else { return }
             self.shouldRunVideo = shouldRun
             self.syncRunningPlayers()
+            self.poller?.setVisible(shouldRun)
         }
         monitor.start()
         presence = monitor
@@ -107,6 +121,8 @@ final class AppState {
             try await client.login()
             try await discover(client: client, user: user)
             connection = .connected
+            startEventPolling(client: client)
+            await startControls(client: client)
         } catch {
             Log.app.error("connect to \(host, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
             connection = .unreachable(error.localizedDescription)
@@ -126,6 +142,12 @@ final class AppState {
     }
 
     private func teardown() async {
+        poller?.stop()
+        poller = nil
+        controls?.shutdown()
+        controls = nil
+        clearControlFailure()
+        events.clear()
         for controller in controllers.values {
             controller.stop()
         }
@@ -137,6 +159,115 @@ final class AppState {
             }
         }
         client = nil
+    }
+
+    // MARK: - Events
+
+    /// ADR 0008: one poller for the whole app, started once the camera list is
+    /// known.
+    private func startEventPolling(client: NVRClient) {
+        poller?.stop()
+        let channels = cameras.map {
+            EventPoller.Channel(cameraID: $0.id, name: $0.name, channel: $0.channel)
+        }
+        guard !channels.isEmpty else {
+            poller = nil
+            return
+        }
+
+        let poller = EventPoller(
+            client: client,
+            channels: channels,
+            store: events,
+            notifier: notifier,
+            onProbe: { [weak self] present in
+                self?.recordProbe(command: GetEvents.cmd, present: present)
+            },
+            onLastingFailure: { [weak self] message in
+                self?.noteEventPollFailure(message)
+            },
+            onRecovery: { [weak self] in
+                self?.noteEventPollRecovery()
+            }
+        )
+        poller.setVisible(shouldRunVideo)
+        poller.start()
+        self.poller = poller
+    }
+
+    /// `GetAbility` reports nothing about `GetEvents`, so the poller's probe is
+    /// the only source for it. Recording it here keeps every capability answer
+    /// in one place, and `Capabilities.supportsGetEvents` then reads true.
+    private func recordProbe(command: String, present: Bool) {
+        capabilities = capabilities?.recording(command: command, present: present)
+    }
+
+    /// A poll that keeps failing means the NVR is gone, so it reuses the one
+    /// global banner rather than adding a second signal.
+    private func noteEventPollFailure(_ message: String) {
+        guard connection == .connected else { return }
+        connection = .unreachable(message)
+    }
+
+    private func noteEventPollRecovery() {
+        guard case .unreachable = connection else { return }
+        connection = .connected
+    }
+
+    // MARK: - Controls
+
+    /// The controls read their own state once the camera list is known. The
+    /// same pass probes the four commands that `GetAbility` says nothing about,
+    /// so a control only appears after its command has answered.
+    private func startControls(client: NVRClient) async {
+        guard let capabilities, !cameras.isEmpty else {
+            controls = nil
+            return
+        }
+        let store = ControlsStore(
+            client: client,
+            cameras: cameras,
+            capabilities: capabilities,
+            onProbe: { [weak self] command, present in
+                self?.recordProbe(command: command, present: present)
+            },
+            onFailure: { [weak self] message in
+                self?.noteControlFailure(message)
+            },
+            onSuccess: { [weak self] in
+                self?.clearControlFailure()
+            }
+        )
+        controls = store
+        await store.refresh()
+    }
+
+    func selectCamera(id: String) {
+        guard camerasByID[id] != nil, selectedCameraID != id else { return }
+        controls?.stopMove()
+        selectedCameraID = id
+    }
+
+    var selectedCamera: Camera? {
+        selectedCameraID.flatMap { camerasByID[$0] }
+    }
+
+    /// A refused control writes to the one global banner, and takes itself back
+    /// down so a single failure does not sit there for the rest of the session.
+    private func noteControlFailure(_ message: String) {
+        controlFailure = message
+        controlFailureTask?.cancel()
+        controlFailureTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            self?.controlFailure = nil
+        }
+    }
+
+    private func clearControlFailure() {
+        controlFailureTask?.cancel()
+        controlFailureTask = nil
+        controlFailure = nil
     }
 
     // MARK: - Cameras and tiles
@@ -151,6 +282,10 @@ final class AppState {
         self.capabilities = capabilities
         self.cameras = cameras
         camerasByID = Dictionary(cameras.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        if selectedCameraID.flatMap({ camerasByID[$0] }) == nil {
+            selectedCameraID = cameras.first?.id
+        }
 
         sourcesByID = [:]
         sourcesByCameraID = [:]
@@ -375,6 +510,7 @@ final class AppState {
         let target = mainQualitySource(for: source)
         controller(for: target)
         focusedSourceID = target.id
+        selectCamera(id: target.cameraID)
         syncRunningPlayers()
     }
 
