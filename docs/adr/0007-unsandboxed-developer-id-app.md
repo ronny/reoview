@@ -44,3 +44,28 @@ Prove this in the milestone 1 spike, not in milestone 7.
 - A sandboxed app with `network.client` and `downloads.read-write`. It is real
   work against VLCKit's plugin loading, for no benefit on a LAN app.
 - An ad-hoc signed local build. It cannot be published.
+
+## Amendment, 2026-09-06
+
+The context above is wrong about the shape of VLCKit 3.7.3. The decision does
+not change.
+
+The vendored framework holds no plugin dynamic libraries. A search for `*.dylib`
+and `*.so` under `Vendor/VLCKit.xcframework` returns nothing. The VideoLAN
+CocoaPods build links every VLC plugin statically into one 79 MB binary. The
+`_vlc_static_modules` symbol is present, and no `vlc_entry__3_0_0_*` export
+exists.
+
+The framework still needs a new signature. As shipped it is ad-hoc signed, with
+`Identifier=org.videolan.vlckitframework` and no Team ID. A binary with no Team
+ID fails library validation under the hardened runtime.
+
+The re-sign loop stays in `scripts/build-app.sh`. It reports how many nested
+binaries it found, and zero is the correct count today. A later VLCKit that
+ships loadable plugins needs no change to the script.
+
+One measured consequence: an ad-hoc signature plus `--options runtime` makes
+dyld reject the framework with "mapping process and mapped file (non-platform)
+have different Team IDs". Two independent ad-hoc signatures both have no Team
+ID, so they do not match. The `--adhoc` mode of the build script therefore signs
+without the hardened runtime. Release signing is not affected.

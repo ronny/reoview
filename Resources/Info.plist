@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template. scripts/build-app.sh replaces __VERSION__ and __BUILD__.
+
+  Keys that are deliberately absent:
+  - LSUIElement. The app has a dock icon and a normal window.
+  - NSAppTransportSecurity. The NVR certificate is self-signed, but the
+    URLSession delegate decides that, not ATS.
+  - NSUserNotificationUsageDescription. Not a real key. UNUserNotificationCenter
+    asks at runtime and needs no Info.plist string.
+  - NSLocalNetworkUsageDescription. macOS 14 does not gate local network access.
+    macOS 15 and later do, and they show a generic prompt without this key. Add
+    it when the minimum rises, or to write the prompt text yourself.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>reolink-viewer</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>au.ronny.ReolinkViewer</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Reolink Viewer</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__BUILD__</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Reolink Viewer connects to your Reolink NVR on the local network to show camera video.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>
