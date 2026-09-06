@@ -25,6 +25,18 @@ struct StatusStrip: View {
 
             Spacer()
 
+            Picker("Layout", selection: layoutSelection) {
+                ForEach(LayoutMode.allCases) { mode in
+                    Image(systemName: mode.symbol)
+                        .accessibilityLabel(mode.title)
+                        .help(mode.title)
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+
             Button(action: onSettings) {
                 Image(systemName: "gearshape")
             }
@@ -36,6 +48,10 @@ struct StatusStrip: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.bar)
+    }
+
+    private var layoutSelection: Binding<LayoutMode> {
+        Binding(get: { state.layout }, set: { state.layout = $0 })
     }
 
     private var reachabilityText: String {

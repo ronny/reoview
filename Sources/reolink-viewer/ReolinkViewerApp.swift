@@ -23,6 +23,15 @@ private struct ViewCommands: Commands {
 
     var body: some Commands {
         CommandMenu("View") {
+            // Cmd+Ctrl, because Cmd+1 to Cmd+3 already focus a tile and a bare
+            // `F` toggles full screen.
+            Toggle("Grid Layout", isOn: layout(.grid))
+                .keyboardShortcut("g", modifiers: [.command, .control])
+            Toggle("Stacked Layout", isOn: layout(.stacked))
+                .keyboardShortcut("s", modifiers: [.command, .control])
+            Toggle("Columns Layout", isOn: layout(.columns))
+                .keyboardShortcut("c", modifiers: [.command, .control])
+            Divider()
             Button("Tile 1") { state.focus(tileIndex: 0) }
                 .keyboardShortcut("1", modifiers: .command)
             Button("Tile 2") { state.focus(tileIndex: 1) }
@@ -32,6 +41,10 @@ private struct ViewCommands: Commands {
             Divider()
             Button("Show All Tiles") { state.unfocus() }
         }
+    }
+
+    private func layout(_ mode: LayoutMode) -> Binding<Bool> {
+        Binding(get: { state.layout == mode }, set: { _ in state.layout = mode })
     }
 }
 

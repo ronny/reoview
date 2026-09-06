@@ -1,3 +1,4 @@
+import ReolinkNVR
 import ReolinkVideo
 import SwiftUI
 
@@ -44,6 +45,32 @@ struct TileView: View {
             .padding(8)
         }
         .clipShape(.rect(cornerRadius: 8))
+        .contextMenu { menu }
+    }
+
+    @ViewBuilder
+    private var menu: some View {
+        if let camera = state.camera(for: controller.source) {
+            Picker(camera.name, selection: streamSelection(for: camera)) {
+                Text("Default").tag(StreamSelection.standard)
+                Text("All Streams").tag(StreamSelection.all)
+                ForEach(state.sources(for: camera.id)) { source in
+                    Text(state.label(for: source)).tag(StreamSelection.source(source.id))
+                }
+            }
+            .pickerStyle(.inline)
+            Divider()
+        }
+        Button(controller.isMuted ? "Unmute" : "Mute") {
+            state.toggleMuted(sourceID: controller.source.id)
+        }
+    }
+
+    private func streamSelection(for camera: Camera) -> Binding<StreamSelection> {
+        Binding(
+            get: { state.selection(for: camera.id) },
+            set: { state.setSelection($0, cameraID: camera.id) }
+        )
     }
 }
 

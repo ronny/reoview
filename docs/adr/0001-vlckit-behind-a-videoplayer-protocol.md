@@ -4,8 +4,14 @@ Status: accepted, 2026-09-06
 
 ## Context
 
-The app exists because browsers hold a `NoDisplaySleep` power assertion for any
-visible playing `<video>`. A native player can opt out of that assertion.
+The app exists because:
+1. the official Reolink macOS app is Intel only (as of Sep 2026 🙄), a resource hog, and has awful UX
+2. even though cameras can be accessed via Home Assistant dashboard via a browser, BUT browsers
+   hold a `NoDisplaySleep` power assertion for any visible playing `<video>`, preventing display
+   sleep.
+
+A lightweight native player can opt out of that assertion as well as provide additional features,
+customised to how the user likes it.
 
 libvlc has a core option `--no-disable-screensaver`. The option is present in the
 VLC build on this machine. Screensaver inhibition is on by default, so the option

@@ -169,18 +169,51 @@ final class AppState {
             }
         }
 
-        let saved = config.config.tileOrder.filter { sourcesByID[$0] != nil }
-        tileOrder = saved.isEmpty ? defaultTileOrder() : saved
-        config.config.tileOrder = tileOrder
+        rebuildTiles(refreshingCandidates: true)
+    }
 
-        controllers = controllers.filter { sourcesByID[$0.key] != nil }
-        for id in tileOrder {
+    /// Rebuilds the tile list from the per-camera stream selections, then hands
+    /// the running set back to `syncRunningPlayers`. Controllers for sources
+    /// that are no longer shown are stopped before they go, so the NVR gets its
+    /// RTSP session back.
+    ///
+    /// `refreshingCandidates` is for a fresh discovery, where the codec and the
+    /// host may have changed. A selection change leaves the surviving tiles
+    /// alone, because `setCandidates` restarts a playing stream.
+    private func rebuildTiles(refreshingCandidates: Bool = false) {
+        let ids = tileIDs()
+        tileOrder = ids
+        pruneFocus(tileIDs: ids)
+
+        var wanted = Set(ids)
+        if let focusedSourceID { wanted.insert(focusedSourceID) }
+
+        for id in controllers.keys.filter({ !wanted.contains($0) }) {
+            controllers[id]?.stop()
+            controllers.removeValue(forKey: id)
+        }
+
+        for id in wanted {
             guard let source = sourcesByID[id] else { continue }
-            controller(for: source).setCandidates(candidates(for: source))
+            let controller = controller(for: source)
+            if refreshingCandidates {
+                controller.setCandidates(candidates(for: source))
+            }
         }
 
         enforceSingleUnmutedTile()
         syncRunningPlayers()
+    }
+
+    /// A focused tile survives a selection change to another camera. It does
+    /// not survive its own camera losing every tile, or its source going away
+    /// with the lens.
+    private func pruneFocus(tileIDs ids: [String]) {
+        guard let focused = focusedSourceID else { return }
+        let survives = sourcesByID[focused].map { source in
+            ids.contains { sourcesByID[$0]?.cameraID == source.cameraID }
+        } ?? false
+        if !survives { focusedSourceID = nil }
     }
 
     /// A saved config could name more than one unmuted tile.
@@ -197,22 +230,64 @@ final class AppState {
         }
     }
 
+    /// The `StreamSource` ids the grid shows, in camera order, from the
+    /// per-camera selections.
+    private func tileIDs() -> [String] {
+        var ids: [String] = []
+        for camera in cameras {
+            let sources = sourcesByCameraID[camera.id] ?? []
+            guard !sources.isEmpty else { continue }
+            switch selection(for: camera.id) {
+            case .all:
+                ids.append(contentsOf: sources.map(\.id))
+            case .source(let id) where sources.contains(where: { $0.id == id }):
+                ids.append(id)
+            case .standard, .source:
+                ids.append(contentsOf: Self.standardIDs(of: sources))
+            }
+        }
+        return ids
+    }
+
     /// The grid per CONTEXT.md: the sub stream of every wide lens, then the
     /// main stream of a telephoto lens, which has no sub stream. On the
     /// verified NVR that is Front Door sub, Driveway wide sub, and Driveway
     /// telephoto main.
-    private func defaultTileOrder() -> [String] {
+    private static func standardIDs(of sources: [StreamSource]) -> [String] {
         var ids: [String] = []
-        for camera in cameras {
-            let sources = sourcesByCameraID[camera.id] ?? []
-            for lens in Lens.allCases {
-                let forLens = sources.filter { $0.lens == lens }
-                guard !forLens.isEmpty else { continue }
-                let pick = forLens.first { $0.quality == .sub } ?? forLens.first
-                if let pick { ids.append(pick.id) }
-            }
+        for lens in Lens.allCases {
+            let forLens = sources.filter { $0.lens == lens }
+            guard let pick = forLens.first(where: { $0.quality == .sub }) ?? forLens.first else { continue }
+            ids.append(pick.id)
         }
         return ids
+    }
+
+    // MARK: - Stream selection
+
+    func sources(for cameraID: String) -> [StreamSource] {
+        sourcesByCameraID[cameraID] ?? []
+    }
+
+    func selection(for cameraID: String) -> StreamSelection {
+        config.config.streamSelectionByCameraID[cameraID] ?? .standard
+    }
+
+    func setSelection(_ selection: StreamSelection, cameraID: String) {
+        guard selection != self.selection(for: cameraID) else { return }
+        config.config.streamSelectionByCameraID[cameraID] = selection
+        rebuildTiles()
+    }
+
+    func label(for source: StreamSource) -> String {
+        "\(source.lens.rawValue.capitalized) \(source.quality.rawValue)"
+    }
+
+    // MARK: - Layout
+
+    var layout: LayoutMode {
+        get { config.config.layout }
+        set { config.config.layout = newValue }
     }
 
     @discardableResult
