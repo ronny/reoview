@@ -80,17 +80,28 @@ private struct CameraDots: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(name).foregroundStyle(.secondary)
-            dot("Motion", "figure.walk.motion", events.motion, .orange)
-            dot("Person", "person.fill", events.person, .blue)
-            dot("Vehicle", "car.fill", events.vehicle, .purple)
-            dot("Visitor", "bell.fill", events.visitor, .pink)
+            ForEach(events.visible) { detection in
+                dot(detection, active: events.isActive(detection))
+            }
         }
     }
 
-    private func dot(_ label: String, _ symbol: String, _ active: Bool, _ colour: Color) -> some View {
-        Image(systemName: symbol)
-            .foregroundStyle(active ? colour : Color.secondary.opacity(0.3))
-            .help(label)
-            .accessibilityLabel("\(name) \(label) \(active ? "active" : "clear")")
+    private func dot(_ detection: Detection, active: Bool) -> some View {
+        Image(systemName: detection.symbol)
+            .foregroundStyle(active ? detection.colour : Color.secondary.opacity(0.3))
+            .help(detection.label)
+            .accessibilityLabel("\(name) \(detection.label) \(active ? "active" : "clear")")
+    }
+}
+
+private extension Detection {
+    var colour: Color {
+        switch self {
+        case .motion: .orange
+        case .person: .blue
+        case .vehicle: .purple
+        case .pet: .teal
+        case .visitor: .pink
+        }
     }
 }
