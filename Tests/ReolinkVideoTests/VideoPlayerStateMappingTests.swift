@@ -7,7 +7,7 @@ import VLCKit
 struct VideoPlayerStateMappingTests {
     @Test(
         "opening states map to .opening",
-        arguments: [VLCMediaPlayerState.opening, .buffering]
+        arguments: [VLCMediaPlayerState.opening]
     )
     func opening(vlcState: VLCMediaPlayerState) {
         #expect(VideoPlayerState(vlcState) == .opening)
@@ -15,7 +15,7 @@ struct VideoPlayerStateMappingTests {
 
     @Test(
         "end states map to .stopped",
-        arguments: [VLCMediaPlayerState.stopped, .ended]
+        arguments: [VLCMediaPlayerState.stopped]
     )
     func stopped(vlcState: VLCMediaPlayerState) {
         #expect(VideoPlayerState(vlcState) == .stopped)
@@ -38,7 +38,7 @@ struct VideoPlayerStateMappingTests {
 
     @Test(
         "states with no equivalent map to nil",
-        arguments: [VLCMediaPlayerState.paused, .esAdded]
+        arguments: [VLCMediaPlayerState.paused, .stopping, .nothingSpecial]
     )
     func ignored(vlcState: VLCMediaPlayerState) {
         #expect(VideoPlayerState(vlcState) == nil)
@@ -79,7 +79,7 @@ struct MediaOptionTests {
 struct LibraryOptionTests {
     @Test("screensaver inhibition is turned off")
     func screensaverOff() {
-        #expect(VLCLibraryHost.options.contains("--no-disable-screensaver"))
+        #expect(VLCLibraryHost.options.contains("--disable-screensaver=0"))
     }
 
     @Test("library options use the dash form")

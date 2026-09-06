@@ -105,9 +105,9 @@ it. Until then, make the link by hand after each clean build:
 
 ```bash
 D=.build-video/arm64-apple-macosx/debug
-mkdir -p $D/ReolinkViewerPackageTests.xctest/Contents/Frameworks
+mkdir -p $D/ReoViewPackageTests.xctest/Contents/Frameworks
 ln -sfn ../../../VLCKit.framework \
-  $D/ReolinkViewerPackageTests.xctest/Contents/Frameworks/VLCKit.framework
+  $D/ReoViewPackageTests.xctest/Contents/Frameworks/VLCKit.framework
 ```
 
 SwiftPM also warns that this file is unhandled. Add

@@ -2,10 +2,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "ReolinkViewer",
+    name: "ReoView",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "reolink-viewer", targets: ["reolink-viewer"]),
+        .executable(name: "reoview", targets: ["reoview"]),
         .library(name: "ReolinkNVR", targets: ["ReolinkNVR"]),
         .library(name: "ReolinkVideo", targets: ["ReolinkVideo"]),
     ],
@@ -15,7 +15,7 @@ let package = Package(
         .binaryTarget(name: "VLCKit", path: "Vendor/VLCKit.xcframework"),
         .target(name: "ReolinkVideo", dependencies: ["VLCKit"], exclude: ["README.md"]),
         .executableTarget(
-            name: "reolink-viewer",
+            name: "reoview",
             dependencies: ["ReolinkNVR", "ReolinkVideo"]
         ),
         .testTarget(name: "ReolinkNVRTests", dependencies: ["ReolinkNVR"]),

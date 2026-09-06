@@ -102,7 +102,7 @@ The app's defaults domain holds one after the first run, and it does not carry
 `--no-disable-screensaver`:
 
 ```bash
-defaults read au.ronny.ReolinkViewer VLCParams
+defaults read au.ronny.ReoView VLCParams
 ```
 
 If VLCKit prefers this array over the options passed to `VLCLibrary(options:)`,

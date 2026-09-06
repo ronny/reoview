@@ -1,7 +1,7 @@
 import OSLog
 
 enum Log {
-    static let subsystem = "au.ronny.ReolinkViewer"
+    static let subsystem = "au.ronny.ReoView"
 
     static let app = Logger(subsystem: subsystem, category: "app")
     static let config = Logger(subsystem: subsystem, category: "config")

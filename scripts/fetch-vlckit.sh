@@ -2,10 +2,11 @@
 # Downloads VLCKit and extracts it into Vendor/. See docs/adr/0002-vendor-vlckit-3-7-3.md.
 set -euo pipefail
 
-VLCKIT_VERSION="3.7.3"
-VLCKIT_ARCHIVE="VLCKit-3.7.3-319ed2c0-79128878.tar.xz"
-VLCKIT_URL="https://download.videolan.org/pub/cocoapods/prod/${VLCKIT_ARCHIVE}"
-VLCKIT_SHA256="019afdae4e2e2d0f3ac325fac8f7ba0af25dca70b9d157df7d60db88e0be8e5d"
+VLCKIT_VERSION="4.0-20260831-1526"
+VLCKIT_ARCHIVE="VLCKit-4.0-20260831-1526.zip"
+VLCKIT_URL="https://download.videolan.org/cocoapods/unstable/${VLCKIT_ARCHIVE}"
+# The same checksum the official master Package.swift pins.
+VLCKIT_SHA256="c61a42052ec4c1315325fba81f8893f4ccf639d92bf61dd1b3c37c3a2f26b8e3"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 vendor_dir="${repo_root}/Vendor"
@@ -21,7 +22,7 @@ mkdir -p "${cache_dir}"
 archive="${cache_dir}/${VLCKIT_ARCHIVE}"
 
 if [[ ! -f "${archive}" ]]; then
-  echo "Downloading VLCKit ${VLCKIT_VERSION} (about 88 MB)"
+  echo "Downloading VLCKit ${VLCKIT_VERSION} (about 900 MB)"
   curl -fL --progress-bar -o "${archive}.partial" "${VLCKIT_URL}"
   mv "${archive}.partial" "${archive}"
 fi
@@ -38,24 +39,22 @@ fi
 echo "Extracting"
 work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
-tar -xJf "${archive}" -C "${work}"
+unzip -q -o "${archive}" -d "${work}"
 
 rm -rf "${xcframework}"
 
-found_xcframework="$(find "${work}" -maxdepth 4 -name 'VLCKit.xcframework' -type d | head -1)"
-if [[ -n "${found_xcframework}" ]]; then
-  cp -R "${found_xcframework}" "${xcframework}"
-else
-  # The archive ships a plain framework. Wrap it so that SwiftPM can consume it.
-  found_framework="$(find "${work}" -maxdepth 4 -name 'VLCKit.framework' -type d | head -1)"
-  if [[ -z "${found_framework}" ]]; then
-    echo "No VLCKit.framework or VLCKit.xcframework in ${VLCKIT_ARCHIVE}" >&2
-    find "${work}" -maxdepth 3 >&2
-    exit 1
-  fi
+# The published xcframework carries every Apple platform and 462 MB of dSYMs.
+# Keep the macOS framework only and rebuild a single-platform xcframework
+# around it, which is all this app links.
+macos_framework="$(find "${work}" -maxdepth 4 -path '*macos*' -name 'VLCKit.framework' -type d | head -1)"
+if [[ -n "${macos_framework}" ]]; then
   xcodebuild -create-xcframework \
-    -framework "${found_framework}" \
-    -output "${xcframework}"
+    -framework "${macos_framework}" \
+    -output "${xcframework}" > /dev/null
+else
+  echo "No macOS VLCKit.framework in ${VLCKIT_ARCHIVE}" >&2
+  find "${work}" -maxdepth 3 >&2
+  exit 1
 fi
 
 echo "VLCKit ${VLCKIT_VERSION} ready at ${xcframework}"

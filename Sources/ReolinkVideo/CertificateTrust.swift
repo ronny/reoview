@@ -16,7 +16,7 @@ final class CertificateTrust: NSObject, VLCCustomDialogRendererProtocol, @unchec
     private let lock = NSLock()
     private var trustedHosts: Set<String> = []
     private weak var provider: VLCDialogProvider?
-    private let log = Logger(subsystem: "au.ronny.ReolinkViewer", category: "tls")
+    private let log = Logger(subsystem: "au.ronny.ReoView", category: "tls")
 
     /// libvlc's cancel button is button 3.
     private static let cancelButton: Int32 = 3

@@ -3,11 +3,11 @@ import ReolinkVideo
 import SwiftUI
 
 @main
-struct ReolinkViewerApp: App {
+struct ReoViewApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        Window("Reolink Viewer", id: AppDelegate.mainWindowID) {
+        Window("ReoView", id: AppDelegate.mainWindowID) {
             ContentView()
                 .environment(delegate.state)
                 .frame(minWidth: 720, minHeight: 440)
@@ -85,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "video.fill", accessibilityDescription: "Reolink Viewer")
+        item.button?.image = NSImage(systemSymbolName: "video.fill", accessibilityDescription: "ReoView")
         item.button?.target = self
         item.button?.action = #selector(toggleMainWindow)
         statusItem = item

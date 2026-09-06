@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Assembles, signs, and optionally notarizes "dist/Reolink Viewer.app".
+# Assembles, signs, and optionally notarizes "dist/ReoView.app".
 # See docs/adr/0003-build-without-xcode.md and docs/adr/0007-unsandboxed-developer-id-app.md.
 set -euo pipefail
 
-APP_NAME="Reolink Viewer"
-EXECUTABLE="reolink-viewer"
-ARCHIVE_PREFIX="ReolinkViewer"
-DEFAULT_KEYCHAIN_PROFILE="reolink-viewer-notary"
+APP_NAME="ReoView"
+EXECUTABLE="reoview"
+ARCHIVE_PREFIX="ReoView"
+DEFAULT_KEYCHAIN_PROFILE="reoview"
 VLCKIT_INSTALL_NAME="@rpath/VLCKit.framework/Versions/A/VLCKit"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

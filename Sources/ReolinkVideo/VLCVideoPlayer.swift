@@ -61,7 +61,10 @@ public final class VLCVideoPlayer: VideoPlayer {
         if url.scheme?.lowercased() == "https", let host = url.host {
             VLCLibraryHost.trustCertificate(of: host)
         }
-        let media = VLCMedia(url: url)
+        guard let media = VLCMedia(url: url) else {
+            transition(to: .failed("Could not open the stream"))
+            return
+        }
         for option in Self.mediaOptions(networkCachingMilliseconds: networkCachingMilliseconds) {
             media.addOption(option)
         }
@@ -134,15 +137,15 @@ extension VideoPlayerState {
     /// stream opens.
     init?(_ vlcState: VLCMediaPlayerState) {
         switch vlcState {
-        case .opening, .buffering:
+        case .opening:
             self = .opening
         case .playing:
             self = .playing
-        case .stopped, .ended:
+        case .stopped:
             self = .stopped
         case .error:
             self = .failed("VLC reported a playback error")
-        case .paused, .esAdded:
+        case .nothingSpecial, .paused, .stopping:
             return nil
         @unknown default:
             return nil
@@ -166,9 +169,8 @@ private final class DelegateShim: NSObject, VLCMediaPlayerDelegate, @unchecked S
         super.init()
     }
 
-    func mediaPlayerStateChanged(_ aNotification: Notification) {
-        guard let player = aNotification.object as? VLCMediaPlayer else { return }
-        onState(player.state)
+    func mediaPlayerStateChanged(_ newState: VLCMediaPlayerState) {
+        onState(newState)
     }
 
     func mediaPlayerTimeChanged(_ aNotification: Notification) {

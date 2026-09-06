@@ -17,7 +17,7 @@ enum KeychainError: Error, Equatable {
 ///
 /// Nothing here ever logs the password, and no caller should.
 enum KeychainStore {
-    static let service = "au.ronny.ReolinkViewer"
+    static let service = "au.ronny.ReoView"
 
     static func account(username: String, host: String) -> String {
         "\(username)@\(host)"

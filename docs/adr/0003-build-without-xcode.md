@@ -20,7 +20,7 @@ The package has three targets:
 
 - `ReolinkNVR` — transport, client, commands, models. It must not import AppKit.
 - `ReolinkVideo` — the `VideoPlayer` protocol and the VLCKit implementation.
-- `reolink-viewer` — the executable. SwiftUI views, `AppState`, controllers.
+- `reoview` — the executable. SwiftUI views, `AppState`, controllers.
 
 `ReolinkNVR` and `ReolinkVideo` each get a test target.
 
