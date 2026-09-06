@@ -58,6 +58,9 @@ public final class VLCVideoPlayer: VideoPlayer {
     }
 
     public func play(url: URL) {
+        if url.scheme?.lowercased() == "https", let host = url.host {
+            VLCLibraryHost.trustCertificate(of: host)
+        }
         let media = VLCMedia(url: url)
         for option in Self.mediaOptions(networkCachingMilliseconds: networkCachingMilliseconds) {
             media.addOption(option)
