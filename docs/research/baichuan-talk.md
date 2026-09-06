@@ -10,11 +10,103 @@ the disagreement is recorded, not smoothed over.
 
 | Question | Answer |
 |---|---|
-| Does talk work through the NVR? | Unproven. No source demonstrates it. The protocol carries a channel in every talk message, and the NVR already proxies the talk-ability query. A 30-minute probe settles it. See [Through an NVR](#through-an-nvr). |
-| Audio format | IMA/DVI-4 ADPCM, 16000 Hz, 16-bit, mono, 1024 samples per block. The device states it in `TalkAbility`; do not hard-code it. |
+| Does talk work through the NVR? | **Yes. Measured on this NVR on 2026-09-06.** `TalkConfig` returns 200 for channel 0, and the NVR immediately streams the doorbell's live microphone back. See [Measured against the device](#measured-against-the-device-2026-09-06), which corrects several claims below. |
+| Audio format | IMA/DVI-4 ADPCM, 16000 Hz, 16-bit, mono, 1024 samples per block. Confirmed by the device. Read it from `TalkAbility` anyway. |
 | Effort | Two to four days for a working prototype, on top of an existing Baichuan client. There is no Baichuan client in ReoView today, so add three to five days for transport, login and encryption. |
 | Existing Swift code | Yes. `jestatsio/reolens` (MIT) has a Swift Baichuan client with a talkback file. Transport and login look sound. The talk frame layout is a guess and does not match the working implementations. |
 | Quick-reply upload | No public upload path exists in any source read. See [Quick-reply clips](#quick-reply-clips-and-uploading). |
+
+## Measured against the device, 2026-09-06
+
+The sections below were written from source code. This section was written from
+the NVR. Where they disagree, this section is right.
+
+Probed against the RLN8-410 at `192.168.8.215:9000`, firmware v3.6.5.562, on
+channel 0, the Video Doorbell PoE. No audio was ever sent, so the doorbell
+speaker was never used.
+
+### Talk works through the NVR
+
+`TalkConfig`, message id 201, built from the device's own `TalkAbility` and sent
+with `mixAudioStream`, answers **status 200**.
+
+The 200 is not a blanket accept. Controls on the same connection:
+
+| Request | Status |
+|---|---|
+| Message 10 on channels 2, 5 and 7, which have no camera | 400 |
+| Message 201 on channels 2, 5 and 7 | 400 |
+| Message 201 on channel 0 with a deliberately wrong config | 400 |
+| Message 201 on channel 0 with the config the device asked for | 200 |
+
+A 400 for the wrong codec is only possible if something parses the config.
+
+Then the decisive part. After the 200, with nothing further sent, the NVR
+streams unsolicited message id 202 back at 15.8 messages per second, in
+4160-byte payloads, until message 11 releases the session. The payload decodes
+to int16 audio of a quiet room: 192,660 samples, minimum -297, maximum 299, RMS
+48.4. One `00 00 00 01` start code in 128 KB rules out video.
+
+The NVR therefore does not merely forward a small XML query. It opens a live
+audio path to a camera on its PoE port and carries the camera's microphone
+across it.
+
+`followVideoStream` also returns 200 but sends nothing back. Use
+`mixAudioStream`.
+
+### Corrections to the sections below
+
+1. **FullAes is compulsory, not a case to mitigate.** This firmware answers only
+   the encryption word `12dc`. `03dc`, `02dc`, `01dc` and `00dc` each get
+   silence on an accepted connection. A Swift client needs AES from the first
+   commit.
+2. **A binary payload is encrypted.** Under FullAes the extension carries
+   `<encryptLen>N</encryptLen><binaryData>1</binaryData>`, and the first N bytes
+   of the payload are AES-128-CFB under the session key. The inbound frames are
+   a working example to copy for the outbound direction.
+3. **`audioTalk` does not exist** in the message 199 response on this firmware.
+   Only `ipcAudioTalk`, which is 1 on the two populated channels and 0 on the
+   ten empty ones. Code that looks for `audioTalk` finds nothing.
+4. **Status 300 is a success** for message 199. Accept 200, 201 and 300.
+5. **`mixAudioStream` is offered**, against the dissector notes, and it is the
+   mode that opens the return path.
+6. **An inbound 202 extension carries no `channelId`.** The channel is only in
+   header byte 12, as `channel + 1`.
+7. **No 422 was seen** in six runs of opening and releasing the session.
+8. **Reolink's support article is about the NVR's own front panel**, not a
+   network client. It does not apply here.
+
+### TalkAbility, verbatim
+
+Channel 0 and channel 1 return byte-identical XML.
+
+```xml
+<TalkAbility version="1.1">
+<duplexList><duplex>FDX</duplex></duplexList>
+<audioStreamModeList>
+<audioStreamMode>followVideoStream</audioStreamMode>
+<audioStreamMode>mixAudioStream</audioStreamMode>
+</audioStreamModeList>
+<audioConfigList><audioConfig>
+<priority>0</priority>
+<audioType>adpcm</audioType>
+<sampleRate>16000</sampleRate>
+<samplePrecision>16</samplePrecision>
+<lengthPerEncoder>1024</lengthPerEncoder>
+<soundTrack>mono</soundTrack>
+</audioConfig></audioConfigList>
+</TalkAbility>
+```
+
+### What is still untested
+
+No message 202 was ever sent, so "the speaker plays what we push" is inferred.
+Everything up to the NVR opening and feeding a live session is measured.
+
+The encoder-side unknowns stand: ADPCM nibble order, the BcMedia padding rule,
+and the half-block field. One risk moved up. Outbound audio must encrypt its
+payload and declare `encryptLen`, which neither neolink nor reolink_aio does,
+because neither meets a device that forces FullAes.
 
 ## Sources
 
