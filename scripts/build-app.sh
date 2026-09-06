@@ -128,6 +128,20 @@ EOF
   exit 1
 fi
 
+# `security find-identity -v` counts a revoked certificate among the "valid"
+# ones and only marks it in the text. Signing with one makes Gatekeeper treat
+# the app as malware and move it to the trash, which is not a hypothetical:
+# it happened on 2026-09-06.
+if [[ "${identity}" != "-" ]]; then
+  identity_line="$(security find-identity -v -p codesigning | grep -F "${identity}" | head -1 || true)"
+  if [[ "${identity_line}" == *CSSMERR_TP_CERT_REVOKED* ]]; then
+    echo "error: the certificate '${identity}' is revoked." >&2
+    echo "  ${identity_line}" >&2
+    echo "Remove it from the login keychain and install a current one." >&2
+    exit 1
+  fi
+fi
+
 team_id="$(sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p' <<<"${identity}")"
 
 # --- build ------------------------------------------------------------------
