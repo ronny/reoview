@@ -75,6 +75,43 @@ test clip into a `VLCVideoView` in a window, and read `pmset -g assertions` afte
 6 seconds of playback. The probe held no assertion. Vivaldi held three at the
 same moment.
 
+## Confirmed against the real app, 2026-09-06
+
+The app played two RTSP streams from the NVR, one H.264 and one H.265. Measured
+while both played:
+
+```
+app pid 25475: no assertion of any kind
+pid 31227(Vivaldi): NoDisplaySleepAssertion named: "Video Wake Lock"   x3
+```
+
+The gate in ADR 0001 is met. The app holds nothing, while a browser playing
+video on the same machine holds three display assertions.
+
+This also closes the `VLCParams` risk below. The key was present in the app's
+defaults during this measurement and the app still held no assertion, which
+agrees with the earlier finding that VLCKit 3.7.3 compiles in no inhibit module.
+
+## Closed risk: VLCParams in user defaults
+
+VLCKit reads an array named `VLCParams` from `NSUserDefaults`. The strings
+`VLCParams` and `standardUserDefaults` are both in the vendored binary, and
+nothing in this repository writes that key.
+
+The app's defaults domain holds one after the first run, and it does not carry
+`--no-disable-screensaver`:
+
+```bash
+defaults read au.ronny.ReolinkViewer VLCParams
+```
+
+If VLCKit prefers this array over the options passed to `VLCLibrary(options:)`,
+the screensaver flag is dropped and the app blocks display sleep. That is the
+one failure the project exists to prevent.
+
+Measure it against a live stream before milestone 1 closes. If the flag is
+dropped, write the key from the app with the flag included.
+
 ## Still to prove
 
 The probe decoded H.264 from a local file. A camera sends H.265 over RTSP, which

@@ -39,6 +39,15 @@ public struct StreamResolver: Sendable {
             flvURL(source: source, channel: channel, password: credentials.password),
             flvURL(source: source, channel: channel, password: credentials.percentEncodedPassword),
         ]
+
+        // Measured against an RLN8-410 on firmware v3.6.5.562: every RTSP form
+        // of the telephoto lens answers 404, while the FLV one serves video.
+        // GetAbility still reports supportAutoTrackStream = 1 for the channel,
+        // so the lens is there and only RTSP refuses to carry it. Other
+        // firmware may serve it, so the RTSP path stays as a later candidate.
+        if source.lens == .telephoto {
+            return (flv + paths.map(rtspURL(path:))).compactMap { $0 }
+        }
         return (paths.map(rtspURL(path:)) + flv).compactMap { $0 }
     }
 
@@ -51,11 +60,12 @@ public struct StreamResolver: Sendable {
     /// Both forms are therefore emitted as separate candidates, raw first, and
     /// the player decides which one the NVR accepts.
     ///
-    /// reolink_aio has no verified FLV path for the telephoto lens. The stream
-    /// name mirrors the RTSP one, which is the only form the NVR is known to
-    /// accept.
+    /// The telephoto lens is `ext`, not `autotrack`. reolink_aio would build
+    /// `channel<N>_telephoto_main.bcs`, which answers nothing. Measured on
+    /// 2026-09-06: `channel1_ext.bcs` streams, `channel1_autotrack.bcs` and
+    /// `channel1_telephoto.bcs` do not connect at all.
     private func flvURL(source: StreamSource, channel: Int, password: String) -> URL? {
-        let stream = source.lens == .telephoto ? "autotrack" : source.quality.rawValue
+        let stream = source.lens == .telephoto ? "ext" : source.quality.rawValue
         let query = "port=\(rtmpPort)&app=bcs&stream=channel\(channel)_\(stream).bcs"
             + "&user=\(credentials.user)&password=\(password)"
         return URL(string: "https://\(host)/flv?\(query)")

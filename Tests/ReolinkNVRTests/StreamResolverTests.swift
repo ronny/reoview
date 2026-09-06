@@ -35,17 +35,17 @@ struct StreamResolverTests {
         ])
     }
 
-    @Test("Telephoto has no codec prefix and no codec flip")
+    @Test("Telephoto is FLV first, because RTSP answers 404 on this NVR")
     func telephoto() {
-        let source = StreamSource(cameraID: driveway, lens: .telephoto, quality: .main)
-        let candidates = resolver.candidates(for: source, channel: 1, codec: .h265).map(\.absoluteString)
+        let source = StreamSource(cameraID: "uid-1", lens: .telephoto, quality: .main)
+        let candidates = resolver.candidates(for: source, channel: 1, codec: .h265)
+            .map(\.absoluteString)
 
         #expect(candidates == [
+            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel1_ext.bcs&user=viewer&password=p@ss%20word/1",
+            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel1_ext.bcs&user=viewer&password=p%40ss%20word%2F1",
             "rtsp://viewer:p%40ss%20word%2F1@192.168.8.215:554/Preview_02_autotrack",
-            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel1_autotrack.bcs&user=viewer&password=p@ss%20word/1",
-            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel1_autotrack.bcs&user=viewer&password=p%40ss%20word%2F1",
         ])
-        #expect(candidates.allSatisfy { !$0.contains("h265") && !$0.contains("h264") })
     }
 
     @Test("The password is percent-encoded and never appears in the clear")

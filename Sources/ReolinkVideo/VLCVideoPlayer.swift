@@ -41,9 +41,14 @@ public final class VLCVideoPlayer: VideoPlayer {
         states = stream
         self.continuation = continuation
 
-        let shim = DelegateShim { [weak self] vlcState in
-            Task { @MainActor in self?.handle(vlcState) }
-        }
+        let shim = DelegateShim(
+            onState: { [weak self] vlcState in
+                Task { @MainActor in self?.handle(vlcState) }
+            },
+            onTimeChanged: { [weak self] in
+                Task { @MainActor in self?.handleFrameAdvanced() }
+            }
+        )
         delegateShim = shim
         player.delegate = shim
     }
@@ -98,6 +103,14 @@ public final class VLCVideoPlayer: VideoPlayer {
         player.audio?.isMuted = muted
     }
 
+    /// VLCKit does not reliably report `.playing` for an RTSP stream: it can sit
+    /// in `buffering` while frames are already on screen. An advancing clock is
+    /// the only dependable sign that video is running.
+    private func handleFrameAdvanced() {
+        guard state == .opening else { return }
+        transition(to: .playing)
+    }
+
     private func handle(_ vlcState: VLCMediaPlayerState) {
         guard let next = VideoPlayerState(vlcState) else { return }
         transition(to: next)
@@ -139,14 +152,23 @@ extension VideoPlayerState {
 /// value to the main actor.
 private final class DelegateShim: NSObject, VLCMediaPlayerDelegate, @unchecked Sendable {
     private let onState: @Sendable (VLCMediaPlayerState) -> Void
+    private let onTimeChanged: @Sendable () -> Void
 
-    init(onState: @escaping @Sendable (VLCMediaPlayerState) -> Void) {
+    init(
+        onState: @escaping @Sendable (VLCMediaPlayerState) -> Void,
+        onTimeChanged: @escaping @Sendable () -> Void
+    ) {
         self.onState = onState
+        self.onTimeChanged = onTimeChanged
         super.init()
     }
 
     func mediaPlayerStateChanged(_ aNotification: Notification) {
         guard let player = aNotification.object as? VLCMediaPlayer else { return }
         onState(player.state)
+    }
+
+    func mediaPlayerTimeChanged(_ aNotification: Notification) {
+        onTimeChanged()
     }
 }
