@@ -69,3 +69,29 @@ dyld reject the framework with "mapping process and mapped file (non-platform)
 have different Team IDs". Two independent ad-hoc signatures both have no Team
 ID, so they do not match. The `--adhoc` mode of the build script therefore signs
 without the hardened runtime. Release signing is not affected.
+
+## Amendment on revoked certificates, 2026-09-06
+
+`security find-identity -v -p codesigning` counts a revoked certificate among
+the valid ones. It marks it in the text as `CSSMERR_TP_CERT_REVOKED` and still
+reports "1 valid identities found".
+
+Signing with such a certificate is worse than not signing. Gatekeeper scanned
+the result, decided it was malware, and moved the app to the trash:
+
+```
+syspolicyd: GK evaluateScanResult: 2, PST: (team: TEAMID), (id: au.ronny.ReoView)
+syspolicyd: Attempting to move malware to trash
+```
+
+`scripts/build-app.sh` now refuses any identity whose line carries
+`CSSMERR_TP_CERT_REVOKED`.
+
+Two more findings from the same session:
+
+- An Apple Development certificate is not a substitute for a Developer ID
+  Application certificate. Only the latter is meant for an app that runs outside
+  Xcode.
+- A `.cer` file on its own installs the public half. Without the matching
+  private key, `security find-identity` reports no identity at all. Create the
+  certificate from the machine that will sign, so the key is generated there.
