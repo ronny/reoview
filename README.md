@@ -118,6 +118,19 @@ the app.
   VLCKit 4.0. The NVR answers 404 for every RTSP form of it.
 - VLCKit 4.0 is an alpha.
 
+## Credits
+
+The app icon uses the Material Symbols glyph `nest_cam_iq_outdoor`, from
+[google/material-design-icons](https://github.com/google/material-design-icons),
+under the Apache License 2.0. The blue is sampled from Reolink's own app icon so
+the two sit together in the Dock. Nothing of Reolink's own branding is used.
+
+Payload shapes for the HTTP API come from reading
+[starkillerOG/reolink_aio](https://github.com/starkillerOG/reolink_aio). The
+Baichuan protocol notes draw on that and on
+[QuantumEntangledAndy/neolink](https://github.com/QuantumEntangledAndy/neolink);
+sources are cited per claim in [docs/research](docs/research).
+
 ## Documentation
 
 | File | What it holds |
