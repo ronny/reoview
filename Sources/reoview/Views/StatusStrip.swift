@@ -2,21 +2,22 @@ import SwiftUI
 
 struct StatusStrip: View {
     @Environment(AppState.self) private var state
+    @Environment(\.uiScale) private var ui
 
     var onSettings: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: ui.length(12)) {
             Label {
                 Text(reachabilityText)
             } icon: {
                 Circle()
                     .fill(reachabilityColour)
-                    .frame(width: 8, height: 8)
+                    .frame(width: ui.length(8), height: ui.length(8))
             }
 
             if !state.cameras.isEmpty {
-                Divider().frame(height: 14)
+                Divider().frame(height: ui.length(14))
             }
 
             ForEach(state.cameras, id: \.id) { camera in
@@ -44,9 +45,9 @@ struct StatusStrip: View {
             .help("Settings")
             .accessibilityLabel("Settings")
         }
-        .font(.caption)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .font(ui.font(10))
+        .padding(.horizontal, ui.length(12))
+        .padding(.vertical, ui.length(6))
         .background(.bar)
     }
 
@@ -74,11 +75,13 @@ struct StatusStrip: View {
 }
 
 private struct CameraDots: View {
+    @Environment(\.uiScale) private var ui
+
     let name: String
     let events: EventStatusStore.CameraEvents
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: ui.length(6)) {
             Text(name).foregroundStyle(.secondary)
             ForEach(events.visible) { detection in
                 dot(detection, active: events.isActive(detection))

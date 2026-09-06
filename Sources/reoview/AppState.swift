@@ -30,9 +30,6 @@ final class AppState {
     /// Set while one tile fills the window on its main stream.
     private(set) var focusedSourceID: String?
 
-    /// The camera the controls panel acts on. Focusing a tile moves it.
-    private(set) var selectedCameraID: String?
-
     private(set) var controls: ControlsStore?
 
     /// The last control command that the NVR refused. It shares the one global
@@ -242,16 +239,6 @@ final class AppState {
         await store.refresh()
     }
 
-    func selectCamera(id: String) {
-        guard camerasByID[id] != nil, selectedCameraID != id else { return }
-        controls?.stopMove()
-        selectedCameraID = id
-    }
-
-    var selectedCamera: Camera? {
-        selectedCameraID.flatMap { camerasByID[$0] }
-    }
-
     /// A refused control writes to the one global banner, and takes itself back
     /// down so a single failure does not sit there for the rest of the session.
     private func noteControlFailure(_ message: String) {
@@ -282,10 +269,6 @@ final class AppState {
         self.capabilities = capabilities
         self.cameras = cameras
         camerasByID = Dictionary(cameras.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-
-        if selectedCameraID.flatMap({ camerasByID[$0] }) == nil {
-            selectedCameraID = cameras.first?.id
-        }
 
         sourcesByID = [:]
         sourcesByCameraID = [:]
@@ -425,6 +408,23 @@ final class AppState {
         set { config.config.layout = newValue }
     }
 
+    // MARK: - UI scale
+
+    /// `AppConfig` clamps what it is given, so a step past either end settles
+    /// on the end.
+    var uiScale: Double {
+        get { config.config.uiScale }
+        set { config.config.uiScale = newValue }
+    }
+
+    func stepUIScale(by delta: Double) {
+        uiScale = ((uiScale + delta) * 10).rounded() / 10
+    }
+
+    func resetUIScale() {
+        uiScale = 1
+    }
+
     @discardableResult
     private func controller(for source: StreamSource) -> PlayerController {
         if let existing = controllers[source.id] { return existing }
@@ -509,8 +509,11 @@ final class AppState {
         guard let source = sourcesByID[sourceID] else { return }
         let target = mainQualitySource(for: source)
         controller(for: target)
+        // Focusing takes the grid off screen, which can remove a held PTZ
+        // button. Its `onDisappear` also stops the camera; this does not wait
+        // for SwiftUI to get round to it.
+        controls?.stopMove()
         focusedSourceID = target.id
-        selectCamera(id: target.cameraID)
         syncRunningPlayers()
     }
 
@@ -525,6 +528,7 @@ final class AppState {
 
     func unfocus() {
         guard focusedSourceID != nil else { return }
+        controls?.stopMove()
         focusedSourceID = nil
         syncRunningPlayers()
     }

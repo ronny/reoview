@@ -80,7 +80,18 @@ extension StreamSelection {
 struct AppConfig: Codable, Equatable, Sendable {
     /// Version 2 added `layout` and `streamSelectionByCameraID`, and dropped
     /// the saved tile order, which is now derived from the selections.
-    static let currentVersion = 2
+    /// Version 3 added `uiScale`.
+    static let currentVersion = 3
+
+    /// Under 0.8 the chrome is hard to read; over 2.0 the controls stop fitting
+    /// a tile in the narrowest layout.
+    static let uiScaleRange: ClosedRange<Double> = 0.8...2.0
+
+    /// A hand-edited plist can hold anything, including a NaN.
+    static func clampedUIScale(_ value: Double) -> Double {
+        guard value.isFinite else { return 1 }
+        return min(max(value, uiScaleRange.lowerBound), uiScaleRange.upperBound)
+    }
 
     var version: Int
     var host: String
@@ -103,6 +114,12 @@ struct AppConfig: Codable, Equatable, Sendable {
     /// Which streams the grid shows, per `Camera.id`. Absent means `.standard`.
     var streamSelectionByCameraID: [String: StreamSelection]
 
+    /// How much larger than macOS default the text and icons are drawn. See
+    /// `UIScale` for why the app carries this itself.
+    var uiScale: Double {
+        didSet { uiScale = Self.clampedUIScale(uiScale) }
+    }
+
     init(
         version: Int = AppConfig.currentVersion,
         host: String = "",
@@ -111,7 +128,8 @@ struct AppConfig: Codable, Equatable, Sendable {
         winningURLBySourceID: [String: String] = [:],
         windowFrame: String? = nil,
         layout: LayoutMode = .grid,
-        streamSelectionByCameraID: [String: StreamSelection] = [:]
+        streamSelectionByCameraID: [String: StreamSelection] = [:],
+        uiScale: Double = 1
     ) {
         self.version = version
         self.host = host
@@ -121,6 +139,7 @@ struct AppConfig: Codable, Equatable, Sendable {
         self.windowFrame = windowFrame
         self.layout = layout
         self.streamSelectionByCameraID = streamSelectionByCameraID
+        self.uiScale = Self.clampedUIScale(uiScale)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -132,6 +151,7 @@ struct AppConfig: Codable, Equatable, Sendable {
         case windowFrame
         case layout
         case streamSelectionByCameraID
+        case uiScale
     }
 
     /// Every field but the version is optional, so a config written by an older
@@ -151,6 +171,7 @@ struct AppConfig: Codable, Equatable, Sendable {
             .flatMap(LayoutMode.init(rawValue:)) ?? .grid
         streamSelectionByCameraID = try container
             .decodeIfPresent([String: StreamSelection].self, forKey: .streamSelectionByCameraID) ?? [:]
+        uiScale = Self.clampedUIScale(try container.decodeIfPresent(Double.self, forKey: .uiScale) ?? 1)
     }
 }
 

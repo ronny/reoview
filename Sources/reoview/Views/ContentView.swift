@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.uiScale) private var ui
     @State private var showsSettings = false
 
     var body: some View {
@@ -13,13 +14,13 @@ struct ContentView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            ControlsPanel()
-
             StatusStrip { showsSettings = true }
         }
         .onExitCommand { state.unfocus() }
         .sheet(isPresented: $showsSettings) {
-            SettingsView().environment(state)
+            SettingsView()
+                .environment(state)
+                .environment(\.uiScale, ui)
         }
     }
 
@@ -36,20 +37,22 @@ struct ContentView: View {
 }
 
 private struct BannerView: View {
+    @Environment(\.uiScale) private var ui
+
     let message: String
     var onSettings: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: ui.length(8)) {
             Image(systemName: "exclamationmark.triangle.fill")
             Text(message)
             Spacer()
             Button("Settings", action: onSettings)
                 .buttonStyle(.link)
         }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .font(ui.font(12))
+        .padding(.horizontal, ui.length(12))
+        .padding(.vertical, ui.length(8))
         .frame(maxWidth: .infinity)
         .background(Color.red.opacity(0.85))
         .foregroundStyle(.white)

@@ -8,13 +8,24 @@ struct ReoViewApp: App {
 
     var body: some Scene {
         Window("ReoView", id: AppDelegate.mainWindowID) {
-            ContentView()
+            RootView()
                 .environment(delegate.state)
                 .frame(minWidth: 720, minHeight: 440)
         }
         .commands {
             ViewCommands(state: delegate.state)
         }
+    }
+}
+
+/// Puts the scale into the environment once, so no view has to reach into
+/// `AppState` for it.
+private struct RootView: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        ContentView()
+            .environment(\.uiScale, UIScale(state.uiScale))
     }
 }
 
@@ -40,6 +51,18 @@ private struct ViewCommands: Commands {
                 .keyboardShortcut("3", modifiers: .command)
             Divider()
             Button("Show All Tiles") { state.unfocus() }
+            Divider()
+            // The conventional zoom keys. Cmd+0 is free: the tile keys start
+            // at Cmd+1.
+            Button("Larger Text") { state.stepUIScale(by: 0.1) }
+                .keyboardShortcut("+", modifiers: .command)
+                .disabled(state.uiScale >= AppConfig.uiScaleRange.upperBound)
+            Button("Smaller Text") { state.stepUIScale(by: -0.1) }
+                .keyboardShortcut("-", modifiers: .command)
+                .disabled(state.uiScale <= AppConfig.uiScaleRange.lowerBound)
+            Button("Actual Text Size") { state.resetUIScale() }
+                .keyboardShortcut("0", modifiers: .command)
+                .disabled(state.uiScale == 1)
         }
     }
 

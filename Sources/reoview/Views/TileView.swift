@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TileView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.uiScale) private var ui
 
     let controller: PlayerController
 
@@ -16,13 +17,17 @@ struct TileView: View {
                 TileOverlay(state: controller.state)
             }
 
+            if let camera = state.camera(for: controller.source) {
+                TileControls(camera: camera)
+            }
+
             VStack {
                 HStack(alignment: .top) {
                     Text(controller.title)
-                        .font(.callout.weight(.medium))
+                        .font(ui.font(12, weight: .medium))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, ui.length(8))
+                        .padding(.vertical, ui.length(4))
                         .background(.black.opacity(0.45), in: .rect(cornerRadius: 6))
 
                     Spacer()
@@ -31,11 +36,12 @@ struct TileView: View {
                         state.toggleMuted(sourceID: controller.source.id)
                     } label: {
                         Image(systemName: controller.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .frame(width: 22, height: 22)
+                            .font(ui.font(13))
+                            .frame(width: ui.length(22), height: ui.length(22))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.white)
-                    .padding(6)
+                    .padding(ui.length(6))
                     .background(.black.opacity(0.45), in: .circle)
                     .help(controller.isMuted ? "Unmute" : "Mute")
                     .accessibilityLabel(controller.isMuted ? "Unmute \(controller.title)" : "Mute \(controller.title)")
@@ -75,10 +81,12 @@ struct TileView: View {
 }
 
 private struct TileOverlay: View {
+    @Environment(\.uiScale) private var ui
+
     let state: TileState
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: ui.length(8)) {
             switch state {
             case .connecting:
                 ProgressView().controlSize(.small)
@@ -90,14 +98,14 @@ private struct TileOverlay: View {
                 Text("Reconnecting, attempt \(attempt)")
             case .failed(let message):
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.title2)
+                    .font(ui.font(17))
                 Text(message)
                     .multilineTextAlignment(.center)
             }
         }
-        .font(.caption)
+        .font(ui.font(10))
         .foregroundStyle(.white)
-        .padding(12)
+        .padding(ui.length(12))
         .background(.black.opacity(0.55), in: .rect(cornerRadius: 8))
         .padding(16)
     }
