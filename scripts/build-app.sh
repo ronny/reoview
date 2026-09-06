@@ -147,6 +147,10 @@ team_id="$(sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p' <<<"${identity}")"
 # --- build ------------------------------------------------------------------
 
 echo "Building ${EXECUTABLE} (${configuration})"
+# Remove any previous bundle before compiling. A failed build would otherwise
+# leave the last successful app sitting in dist/, looking current.
+rm -rf "${app}"
+
 swift build --package-path "${repo_root}" -c "${configuration}"
 bin_path="$(swift build --package-path "${repo_root}" -c "${configuration}" --show-bin-path)"
 
