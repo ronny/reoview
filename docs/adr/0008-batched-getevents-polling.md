@@ -43,3 +43,15 @@ so one owner is correct.
 - Poll only the selected tile. The status strip then shows stale dots for the
   other cameras.
 - Baichuan push events. That is a protocol port, and it is out of scope for v1.
+
+## Amendment, 2026-09-06
+
+The decision holds. One fact in the context above is wrong.
+
+`GetAbility` carries no ability key for `GetEvents`. reolink_aio finds the
+command by sending it once and looking for a response element that is not an
+error. See `check_command_exists` in `reolink_aio/api.py`.
+
+`Capabilities.supportsGetEvents` therefore reports false until a probe records
+a result. The poller must probe once at startup, then choose between `GetEvents`
+and the pair of `GetMdState` and `GetAiState`.
