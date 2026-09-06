@@ -100,4 +100,110 @@ enum Fixture {
     static let logout = """
     [{"cmd":"Logout","code":0,"value":{"rspCode":200}}]
     """
+
+    /// `GetAbility` with the keys that gate the milestone 4 controls, in the
+    /// versions the RLN8-410 reports. Channel 0 is the doorbell, channel 1 the
+    /// TrackMix, channel 2 an empty slot.
+    static let abilityControls = """
+    [{"cmd":"GetAbility","code":0,"value":{"Ability":{\
+    "abilityChn":[\
+    {"aiTrack":{"permit":0,"ver":0},"alarmAudio":{"permit":0,"ver":1},"floodLight":{"permit":0,"ver":0},\
+    "ptzPreset":{"permit":0,"ver":0},"ptzType":{"permit":0,"ver":0},"supportAudioAlarm":{"permit":0,"ver":1},\
+    "supportAudioFileList":{"permit":6,"ver":1},"supportAutoReply":{"permit":6,"ver":1},\
+    "supportAutoTrackStream":{"permit":0,"ver":0},"supportDigitalZoom":{"permit":0,"ver":0},\
+    "supportFLswitch":{"permit":0,"ver":0},"supportPtzSpeed":{"permit":0,"ver":0},\
+    "supportQuickReplyPlay":{"permit":6,"ver":1}},\
+    {"aiTrack":{"permit":6,"ver":1},"alarmAudio":{"permit":0,"ver":1},"floodLight":{"permit":6,"ver":2},\
+    "ptzPreset":{"permit":7,"ver":1},"ptzType":{"permit":7,"ver":3},"supportAudioAlarm":{"permit":0,"ver":1},\
+    "supportAudioFileList":{"permit":0,"ver":0},"supportAutoReply":{"permit":0,"ver":0},\
+    "supportAutoTrackStream":{"permit":6,"ver":1},"supportDigitalZoom":{"permit":6,"ver":1},\
+    "supportFLswitch":{"permit":6,"ver":1},"supportPtzSpeed":{"permit":6,"ver":1},\
+    "supportQuickReplyPlay":{"permit":0,"ver":0}},\
+    {"aiTrack":{"permit":0,"ver":0},"ptzType":{"permit":0,"ver":0}}],\
+    "devInfo":{"permit":64,"ver":1},"scheduleVersion":{"permit":64,"ver":1}}}}]
+    """
+
+    /// Every control command that only acts answers like this.
+    static func acknowledgement(_ cmd: String) -> String {
+        """
+        [{"cmd":"\(cmd)","code":0,"value":{"rspCode":200}}]
+        """
+    }
+
+    /// Slot 2 is empty, so `enable` is 0 and `reolink_aio` drops it.
+    static let ptzPresets = """
+    [{"cmd":"GetPtzPreset","code":0,"value":{"PtzPreset":[\
+    {"channel":1,"enable":1,"id":1,"name":"Driveway"},\
+    {"channel":1,"enable":0,"id":2,"name":""},\
+    {"channel":1,"enable":1,"id":3,"name":"Gate"}]}}]
+    """
+
+    /// Some firmwares send `id` and `enable` as strings.
+    static let ptzPresetsWithStringNumbers = """
+    [{"cmd":"GetPtzPreset","code":0,"value":{"PtzPreset":[\
+    {"channel":1,"enable":"1","id":"1","name":"Driveway"}]}}]
+    """
+
+    static let ptzGuard = """
+    [{"cmd":"GetPtzGuard","code":0,"value":{"PtzGuard":\
+    {"benable":1,"bexistPos":1,"channel":1,"timeout":60}}}]
+    """
+
+    /// The `action: 1` shape. The position sits under `value` and the range
+    /// under `range`, one level deeper.
+    static let zoomFocus = """
+    [{"cmd":"GetZoomFocus","code":0,\
+    "value":{"ZoomFocus":{"channel":1,"focus":{"pos":32},"zoom":{"pos":4}}},\
+    "range":{"ZoomFocus":{"channel":1,"focus":{"pos":{"max":223,"min":0}},"zoom":{"pos":{"max":33,"min":0}}}}}]
+    """
+
+    static let zoomFocusWithoutRange = """
+    [{"cmd":"GetZoomFocus","code":0,"value":{"ZoomFocus":{"channel":1,"focus":{"pos":32},"zoom":{"pos":4}}}}]
+    """
+
+    /// The TrackMix reports auto track as `bSmartTrack`.
+    static let aiCfgSmartTrack = """
+    [{"cmd":"GetAiCfg","code":0,"value":{"aiDisappearBackTime":30,"aiStopBackTime":15,\
+    "aiTrack":2,"bSmartTrack":1,"channel":1},\
+    "range":{"aiDisappearBackTime":[5,60],"aiStopBackTime":[15,60],"aiTrack":[2,3,4],"channel":1}}]
+    """
+
+    /// A camera without `bSmartTrack`. `aiTrack` then carries the on/off state.
+    static let aiCfgAiTrack = """
+    [{"cmd":"GetAiCfg","code":0,"value":{"aiTrack":0,"channel":1}}]
+    """
+
+    static let whiteLed = """
+    [{"cmd":"GetWhiteLed","code":0,"value":{"WhiteLed":{"bright":100,"channel":1,\
+    "LightingSchedule":{"EndHour":6,"EndMin":0,"StartHour":18,"StartMin":30},"mode":1,"state":0}}}]
+    """
+
+    static let audioFileList = """
+    [{"cmd":"GetAudioFileList","code":0,"value":{"AudioFileList":[\
+    {"channel":0,"fileName":"Please leave the parcel","id":0},\
+    {"channel":0,"fileName":"We will be right there","id":1}]}}]
+    """
+
+    /// A camera that holds no recordings sends null, not an empty array.
+    static let audioFileListEmpty = """
+    [{"cmd":"GetAudioFileList","code":0,"value":{"AudioFileList":null}}]
+    """
+
+    static let autoReply = """
+    [{"cmd":"GetAutoReply","code":0,"value":{"AutoReply":{"channel":0,"enable":1,"fileId":1,"timeout":10}}}]
+    """
+
+    static let audioCfg = """
+    [{"cmd":"GetAudioCfg","code":0,"value":{"AudioCfg":{"channel":0,"talkAndReplyVolume":80,\
+    "visitorLoudspeaker":1,"visitorVolume":60,"volume":70}}}]
+    """
+
+    static let manualRec = """
+    [{"cmd":"GetManualRec","code":0,"value":{"Rec":{"channel":0,"duration":600,"enable":1}}}]
+    """
+
+    /// The firmware bug that puts a value above 1 in `enable`.
+    static let manualRecStuck = """
+    [{"cmd":"GetManualRec","code":0,"value":{"Rec":{"channel":0,"enable":3}}}]
+    """
 }

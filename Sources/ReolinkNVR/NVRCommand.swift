@@ -29,3 +29,12 @@ public struct NoParam: Encodable, Sendable {
         try container.encode([String: String]())
     }
 }
+
+/// The answer to a command that only acts.
+///
+/// The NVR replies with a bare `rspCode`, and some firmwares with no `value` at
+/// all, so there is nothing to read. `NVRClient` has already turned a non-zero
+/// code into a `ReolinkError` by the time this decodes.
+public struct Acknowledgement: Decodable, Sendable {
+    public init(from decoder: any Decoder) throws {}
+}

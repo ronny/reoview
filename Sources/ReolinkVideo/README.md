@@ -1,12 +1,18 @@
 # ReolinkVideo
 
-VLCKit 3.7.3, behind the `VideoPlayer` protocol. See
-[ADR 0001](../../docs/adr/0001-vlckit-behind-a-videoplayer-protocol.md).
+VLCKit 4.0, behind the `VideoPlayer` protocol. See
+[ADR 0001](../../docs/adr/0001-vlckit-behind-a-videoplayer-protocol.md) and the
+amendment on [ADR 0002](../../docs/adr/0002-vendor-vlckit-3-7-3.md).
 
-## The screensaver option
+The app was on VLCKit 3.7.3 until 2026-09-06. It moved to 4.0 because the
+telephoto lens of the TrackMix arrives as HEVC inside FLV, which needs
+libavformat 60.16 or later. 3.7.3 carries 58.76 and adds the video track as
+`undf`.
 
-VLCKit 3.7.3 has two ways to pass libvlc options. The headers are at
-`Vendor/VLCKit.xcframework/macos-arm64_x86_64/VLCKit.framework/Headers/`.
+## Building the library
+
+The headers are at
+`Vendor/VLCKit.xcframework/macos-arm64_x86_64/VLCKit.framework/Versions/A/Headers/`.
 
 | Header | Declaration | Used |
 |---|---|---|
@@ -23,7 +29,7 @@ instead, and each `VLCMediaPlayer` is built from it with
 The options are in `VLCLibraryHost.options`:
 
 ```
---no-disable-screensaver
+--disable-screensaver=0
 --rtsp-tcp
 --no-video-title-show
 --no-snapshot-preview
@@ -33,39 +39,76 @@ The options are in `VLCLibraryHost.options`:
 Library options take the `--` form. Per-media options take the `:` form, and
 `VLCVideoPlayer` adds `:rtsp-tcp` and `:network-caching=300` to each `VLCMedia`.
 
+## Two separate things hold a display assertion
+
+The app exists so that video on screen does not block display sleep. On VLCKit
+4.0 there are two mechanisms, and they are unrelated.
+
+### libvlc's own inhibit module
+
+libvlc 4.0 made `disable-screensaver` an integer, with 0 for never, 2 for
+fullscreen, and 1 for always. The default is 1.
+
+`--no-disable-screensaver` is a 3.x spelling. libvlc 4.0 rejects it, and a
+rejected option stops the library initialising at all:
+
+```
+Error: Unknown option `--no-disable-screensaver'
+*** Terminating app ... reason: 'libvlc failed to initialize'
+```
+
+`--disable-screensaver=0` is the accepted form. It works: `src/video_output/window.c`
+creates the inhibitor only when the value is above zero, and the module never
+loads.
+
+### VLCKit's own assertion
+
+This one is not libvlc, and no libvlc option reaches it. `VLCMediaPlayer.m` in
+VLCKit does this, macOS only and unconditionally:
+
+```objc
+- (void)mediaPlayerStateChanged:(const VLCMediaPlayerState)newState {
+    if (newState == VLCMediaPlayerStatePlaying) {
+        [self preventDisplaySleep];
+    } else {
+        [self allowDisplaySleep];
+    }
+}
+```
+
+`preventDisplaySleep` calls `IOPMAssertionCreateWithName` with
+`kIOPMAssertionTypeNoDisplaySleep`, named "VLC Media Playback". No header
+exposes a switch, and the assertion id is a file static, so one player is enough
+to block display sleep for the process.
+
+`DisplaySleep.stopVLCKitHoldingAssertions()` replaces that method with one that
+does nothing, before any player is built. See
+[ADR 0010](../../docs/adr/0010-neutralise-vlckit-display-sleep-assertion.md).
+
+VLCKit 3.7.3 carries none of this code, and imports no `IOPMAssertion` symbol at
+all, which is why the early measurements on that build were clean.
+
 ## What the binary shows
 
-The vendored libvlc has the `disable-screensaver` option, so
-`--no-disable-screensaver` is valid:
-
 ```bash
-cd Vendor/VLCKit.xcframework/macos-arm64_x86_64/VLCKit.framework
-strings -a VLCKit | grep -x disable-screensaver
+cd Vendor/VLCKit.xcframework/macos-arm64_x86_64/VLCKit.framework/Versions/A
+
+strings -a VLCKit | grep -oE "Lavf[0-9.]+" | sort -u   # Lavf63.1.100
+nm -arch arm64 -u VLCKit | grep IOPMAssertion          # 3 symbols on 4.0, none on 3.7.3
+strings -a VLCKit | grep -E "preventDisplaySleep"      # present on 4.0 only
 ```
-
-It has no inhibit module compiled in. There is no `IOPMAssertionCreateWithName`
-import and no `vlc_entry__inhibit_*` plugin:
-
-```bash
-nm -arch arm64 -u VLCKit | grep -c IOPMAssertion          # 0
-nm -arch arm64 VLCKit | grep _vlc_entry_ | grep -i inhibit # empty
-```
-
-This build therefore takes no display assertion, with or without the option. The
-option stays because it states the intent and it protects against a later
-VLCKit that does ship the module.
 
 ## How to verify
 
-Start the app, play a tile, and check that the app owns no display assertion:
+Start the app, play every tile, and check that it owns no display assertion:
 
 ```bash
-pmset -g assertions | grep -i -A2 display
-pmset -g assertions | sed -n '/Listed by owning process/,$p' | grep -i reolink
+pid=$(pgrep -f "ReoView.app/Contents/MacOS/reoview")
+pmset -g assertions | grep -E "pid ${pid}\b"
 ```
 
-The second command must print nothing. A browser playing the same camera prints
-a line like `NoDisplaySleepAssertion named: "Video Wake Lock"`.
+That must print nothing. A browser playing video at the same time prints lines
+like `NoDisplaySleepAssertion named: "Video Wake Lock"`.
 
 To watch it over time:
 
@@ -75,41 +118,27 @@ pmset -g assertionslog
 
 ### Result, 2026-09-06
 
-Verified with a local file, not a camera. A test clip came from
-`ffmpeg -f lavfi -i testsrc=size=640x360:rate=25 -t 60 -c:v libx264 -pix_fmt yuv420p test.mp4`.
-A small program built the library the same way `VLCLibraryHost` does, played the
-clip into a `VLCVideoView` in a window, and ran `pmset -g assertions` after six
-seconds of playback.
-
-The process held no assertion. `Vivaldi`, playing video at the same time, held
-three `NoDisplaySleepAssertion` entries named "Video Wake Lock". Playback with
-the libvlc default (inhibition on) gave the same result, which agrees with the
-missing inhibit module.
-
-A camera still has to be checked, because RTSP and H.265 use a different decode
-path.
+Measured against the real NVR, with all three tiles playing: one H.264 sub
+stream, one H.265 sub stream, and the telephoto lens over FLV. The app held no
+assertion of any kind. Vivaldi, playing video at the same moment, held three.
 
 ## Tests
 
-`swift test` fails to load the test bundle until the framework is in place.
-SwiftPM copies a binary framework into a test bundle only when the test target
-depends on the binary target, and `ReolinkVideoTests` depends on `ReolinkVideo`
-only:
+Run them with `scripts/test.sh`, not `swift test`.
+
+SwiftPM merges every test target into one bundle and does not copy a binary
+target's framework into it. VLCKit's install name is
+`@loader_path/../Frameworks/VLCKit.framework/...`, which no rpath can redirect,
+so the bundle cannot load it:
 
 ```
 Library not loaded: @loader_path/../Frameworks/VLCKit.framework/Versions/A/VLCKit
 ```
 
-Add `"VLCKit"` to the `ReolinkVideoTests` dependencies in `Package.swift` to fix
-it. Until then, make the link by hand after each clean build:
+`scripts/test.sh` links the framework into the bundle, then runs the tests.
 
-```bash
-D=.build-video/arm64-apple-macosx/debug
-mkdir -p $D/ReoViewPackageTests.xctest/Contents/Frameworks
-ln -sfn ../../../VLCKit.framework \
-  $D/ReoViewPackageTests.xctest/Contents/Frameworks/VLCKit.framework
-```
-
-SwiftPM also warns that this file is unhandled. Add
-`exclude: ["README.md"]` to the `ReolinkVideo` target in `Package.swift` to
-silence it.
+`DisplaySleepTests` is the guard on the countermeasure above. It calls
+`preventDisplaySleep` on a real `VLCMediaPlayer` and counts this process's
+assertions through `IOPMCopyAssertionsByProcess`. It asserts against a real
+count rather than a flag, because a flag would still read true if VLCKit renamed
+the method underneath.

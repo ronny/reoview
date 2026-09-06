@@ -55,3 +55,27 @@ error. See `check_command_exists` in `reolink_aio/api.py`.
 `Capabilities.supportsGetEvents` therefore reports false until a probe records
 a result. The poller must probe once at startup, then choose between `GetEvents`
 and the pair of `GetMdState` and `GetAiState`.
+
+## Amendment on the fallback, 2026-09-06
+
+The decision above says the fallback puts `GetMdState` and `GetAiState` "in the
+same batch". It cannot.
+
+`NVRClient.send([(command:channel:)])` is generic over one command type, because
+the batch returns `[C.Response]`. `GetMdState` and `GetAiState` have different
+response types, so the fallback is two batched requests, one per command, each
+covering every channel. The `GetEvents` path is still a single request, which is
+the case that matters.
+
+The probe costs no extra round trip. The first poll is the probe: the poller
+starts unprobed, sends `GetEvents`, and records the result.
+
+Failures are told apart, because they mean different things:
+
+- A `rspCode` error other than `-6`, or a decode failure, means the command is
+  unusable. Record it absent and use the fallback for the rest of the
+  connection.
+- A transport or HTTP failure says nothing about whether the command exists.
+  Leave the probe open and try `GetEvents` again on the next tick.
+
+A reconnect rebuilds `Capabilities` and probes again.

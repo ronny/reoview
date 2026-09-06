@@ -91,3 +91,94 @@ extension Capabilities: Decodable {
         self.init(host: host, channels: channels)
     }
 }
+
+/// The abilities that gate the controls of milestone 4.
+///
+/// Every rule here is copied from `reolink_aio`'s `construct_capabilities`. A
+/// few of its rules also read a `Get*` response, which `GetAbility` cannot
+/// stand in for; those are named on the accessor.
+public extension Capabilities {
+    /// `ptzType`, not `ptzCtrl`, is what `reolink_aio` reads. The version names
+    /// a family of movements rather than a count.
+    func ptzType(channel: Int) -> Int { abilityVersion("ptzType", channel: channel) }
+
+    func supportsPtz(channel: Int) -> Bool { ptzType(channel: channel) != 0 }
+
+    /// Left and right, and the pad as a whole.
+    func supportsPan(channel: Int) -> Bool {
+        [2, 3, 5, 6, 7].contains(ptzType(channel: channel))
+    }
+
+    /// Up and down. One `ptzType` pans without tilting, so the two differ.
+    func supportsTilt(channel: Int) -> Bool {
+        [2, 3, 5, 6].contains(ptzType(channel: channel))
+    }
+
+    func supportsPtzPresets(channel: Int) -> Bool {
+        supportsPan(channel: channel) && supports("ptzPreset", channel: channel)
+    }
+
+    /// `GetAbility` carries no key for `GetPtzGuard`. `reolink_aio` probes for
+    /// the command, so this stays false until `recording(command:present:)`.
+    func supportsPtzGuard(channel: Int) -> Bool {
+        supportsPan(channel: channel) && supports("GetPtzGuard")
+    }
+
+    /// Whether `PtzCtrl` takes a `speed` field.
+    func supportsPtzSpeed(channel: Int) -> Bool {
+        guard [2, 3].contains(ptzType(channel: channel)) else { return false }
+        // reolink_aio reads supportPtzSpeed with no_key_return=1, so a channel
+        // that never names the key counts as supporting speed.
+        guard channels.indices.contains(channel),
+              let ability = channels[channel]["supportPtzSpeed"]
+        else { return true }
+        return ability.ver > 0
+    }
+
+    /// Optical zoom on those `ptzType` values, digital zoom otherwise.
+    ///
+    /// `reolink_aio` also insists that `GetZoomFocus` came back with a range.
+    /// Only the response can say that, so check `GetZoomFocus.Response.zoomRange`
+    /// as well.
+    func supportsZoom(channel: Int) -> Bool {
+        [1, 2, 5].contains(ptzType(channel: channel))
+            || supports("supportDigitalZoom", channel: channel)
+    }
+
+    /// Floodlight, spotlight and `WhiteLed` are three names for one thing.
+    /// `GetWhiteLed` is a probed command, like `GetPtzGuard`.
+    func supportsFloodlight(channel: Int) -> Bool {
+        supports("GetWhiteLed")
+            && (supports("floodLight", channel: channel) || supports("supportFLswitch", channel: channel))
+    }
+
+    func supportsAutoTrack(channel: Int) -> Bool { supports("aiTrack", channel: channel) }
+
+    /// `AudioAlarmPlay`. `reolink_aio` also wants `GetAudioAlarm` to have
+    /// answered for the channel, which `GetAbility` cannot report.
+    func supportsSiren(channel: Int) -> Bool {
+        supports("alarmAudio", channel: channel) || supports("supportAudioAlarm", channel: channel)
+    }
+
+    /// The stored replies plus the `GetAutoReply` settings.
+    func supportsQuickReply(channel: Int) -> Bool {
+        supports("supportAudioFileList", channel: channel)
+            && supports("supportAutoReply", channel: channel)
+    }
+
+    /// `QuickReplyPlay`. A camera can play a stored reply without carrying the
+    /// auto-reply settings.
+    func supportsQuickReplyPlayback(channel: Int) -> Bool {
+        supportsQuickReply(channel: channel)
+            || supports("supportAudioPlay", channel: channel)
+            || supports("supportQuickReplyPlay", channel: channel)
+    }
+
+    /// `GetAudioCfg` is a probed command too. The channel is taken for the day
+    /// the probe becomes per-channel.
+    func supportsSpeakerVolume(channel: Int) -> Bool { supports("GetAudioCfg") }
+
+    /// No ability key exists. `reolink_aio` decides from whether `GetManualRec`
+    /// answered with an `enable` field, so this needs the probe as well.
+    func supportsManualRecord(channel: Int) -> Bool { supports("GetManualRec") }
+}

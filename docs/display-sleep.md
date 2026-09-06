@@ -3,8 +3,9 @@
 The app exists so that video on screen does not block display sleep. See
 [ADR 0001](adr/0001-vlckit-behind-a-videoplayer-protocol.md).
 
-Measured on 2026-09-06 on Mac `tiny`, macOS 26.6.2, with VLC 3.x from
-`/Applications/VLC.app`. VLC embeds the same libvlc that VLCKit wraps.
+Measured on 2026-09-06 on Mac `tiny`, macOS 26.6.2. The first experiment used
+VLC 3.x from `/Applications/VLC.app`, which embeds the same libvlc that VLCKit
+wraps. Later sections measure the app itself, on VLCKit 3.7.3 and then on 4.0.
 
 ## Method
 
@@ -133,32 +134,39 @@ pid 31227(Vivaldi): NoDisplaySleepAssertion named: "Video Wake Lock"   x3
 The gate in ADR 0001 is met. The app holds nothing, while a browser playing
 video on the same machine holds three display assertions.
 
-This also closes the `VLCParams` risk below. The key was present in the app's
-defaults during this measurement and the app still held no assertion, which
-agrees with the earlier finding that VLCKit 3.7.3 compiles in no inhibit module.
+The `VLCParams` key was present during this measurement, with the screensaver
+option written into it by the app.
 
-## Closed risk: VLCParams in user defaults
+## VLCParams in user defaults
 
-VLCKit reads an array named `VLCParams` from `NSUserDefaults`. The strings
-`VLCParams` and `standardUserDefaults` are both in the vendored binary, and
-nothing in this repository writes that key.
-
-The app's defaults domain holds one after the first run, and it does not carry
-`--no-disable-screensaver`:
+VLCKit reads an array named `VLCParams` from `NSUserDefaults` and uses it
+instead of the options passed to `VLCLibrary(options:)`. Nothing in this
+repository writes that key, and the app's defaults domain holds one after the
+first run:
 
 ```bash
 defaults read au.ronny.ReoView VLCParams
 ```
 
-If VLCKit prefers this array over the options passed to `VLCLibrary(options:)`,
-the screensaver flag is dropped and the app blocks display sleep. That is the
-one failure the project exists to prevent.
+A stored array therefore discards every option the app sets, silently.
 
-Measure it against a live stream before milestone 1 closes. If the flag is
-dropped, write the key from the app with the flag included.
+This was harmless on VLCKit 3.7.3, which held no assertion whatever the options
+said. On 4.0 it is not harmless, so `VLCLibraryHost.enforceOptionsInUserDefaults`
+rewrites the key before the library is built. It keeps VLCKit's own entries and
+replaces the screensaver one.
 
-## Still to prove
+Note that this only governs the libvlc option. The assertion VLCKit takes in its
+own Objective-C layer is unaffected by anything in this array.
 
-The probe decoded H.264 from a local file. A camera sends H.265 over RTSP, which
-is a different decode path. Repeat this measurement against the real app and a
-real stream in milestone 1.
+## What can still break this
+
+The countermeasure replaces a private method, `VLCMediaPlayer.preventDisplaySleep`.
+Nothing in VLCKit's headers promises it exists.
+
+If a future VLCKit renames or removes it, `DisplaySleep` finds no method and
+does nothing. The app then blocks display sleep again, and it does so quietly:
+there is no crash and no error. `DisplaySleepTests` is the only thing that
+catches it, which is why it counts real assertions through
+`IOPMCopyAssertionsByProcess` rather than trusting a flag.
+
+Re-run the measurement above after any VLCKit upgrade.

@@ -66,3 +66,19 @@ struct ResponseValue {
     /// are not known in advance.
     var keys: [String] { container.allKeys.map(\.stringValue) }
 }
+
+extension KeyedDecodingContainer {
+    /// Reads an integer that some firmwares send as a string. `reolink_aio`
+    /// casts the PTZ preset `id` and `enable` fields with `int()` for exactly
+    /// this reason.
+    func decodeLenientInt(forKey key: Key) throws -> Int {
+        if let number = try? decode(Int.self, forKey: key) { return number }
+        let text = try decode(String.self, forKey: key)
+        guard let number = Int(text) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: key, in: self, debugDescription: "\"\(text)\" is not an integer"
+            )
+        }
+        return number
+    }
+}
