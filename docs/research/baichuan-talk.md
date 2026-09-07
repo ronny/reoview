@@ -1,7 +1,7 @@
 # Baichuan two-way talk — research
 
 Read on 2026-09-06. The question: can ReoView do two-way talk to the Front Door
-doorbell (channel 0) through the RLN8-410 on `192.168.8.215:9000`, from Swift?
+doorbell (channel 0) through the RLN8-410 on port 9000, from Swift?
 
 Every claim below names the file and repo it came from. Where sources disagree,
 the disagreement is recorded, not smoothed over.
@@ -21,7 +21,7 @@ the disagreement is recorded, not smoothed over.
 The sections below were written from source code. This section was written from
 the NVR. Where they disagree, this section is right.
 
-Probed against the RLN8-410 at `192.168.8.215:9000`, firmware v3.6.5.562, on
+Probed against the RLN8-410 on port 9000, firmware v3.6.5.562, on
 channel 0, the Video Doorbell PoE. No audio was ever sent, so the doorbell
 speaker was never used.
 
@@ -156,7 +156,7 @@ The official Reolink app runs on macOS and can talk to a doorbell behind this
 NVR. Quit it, start a capture, then start it again so the login is included:
 
 ```bash
-sudo tcpdump -i any -s 0 -w talk.pcap 'host 192.168.8.215 and port 9000'
+sudo tcpdump -i any -s 0 -w talk.pcap 'host <nvr-host> and port 9000'
 ```
 
 macOS writes pcapng, not pcap. Frame headers are plaintext, so message ids,
@@ -688,7 +688,7 @@ the 422 lock, which implies an NVR can hold a talk session — but that is a
 comment, not a demonstration.
 
 Every working talk example found connects straight to a camera on port 9000.
-Frigate discussion 11924 shows `address = "192.168.8.61:9000"` style config
+Frigate discussion 11924 shows an `address = "<camera-host>:9000"` style config
 pointed at the doorbell itself.
 
 ### On `talk = 1` from GetAbility
@@ -707,8 +707,9 @@ channel 0.
 
 ### The direct route is closed here
 
-`CONTEXT.md` records that an ARP sweep of `192.168.8.0/24` finds one Reolink MAC.
-The cameras sit behind the NVR's PoE ports. There is no route to the doorbell.
+[initial-context.md](../initial-context.md) records that an ARP sweep of the
+subnet finds one Reolink MAC address. The cameras sit behind the NVR's PoE
+ports. There is no route to the doorbell.
 If talk requires a direct camera connection, then talk is not possible in this
 installation without re-cabling the doorbell to the LAN switch, which also
 breaks the NVR recording path.
@@ -717,8 +718,8 @@ breaks the NVR recording path.
 
 No code needed beyond a login. In order:
 
-1. Log in to `192.168.8.215:9000`. Send message id 199 with `<channelId>0</channelId>`.
-   Look for `audioTalk` and `ipcAudioTalk`.
+1. Log in to the NVR on port 9000. Send message id 199 with
+   `<channelId>0</channelId>`. Look for `audioTalk` and `ipcAudioTalk`.
 2. Send message id 10 with `<channelId>0</channelId>`. If a `TalkAbility` comes
    back, the NVR forwards channel-addressed talk queries, and the exact audio
    format is now known rather than assumed.
@@ -842,7 +843,7 @@ Component by component. Sizes are rough.
 | BcMedia framer | ~30 lines. See the table above for the two disputed fields. |
 | Pacer | Sleep for the playback duration of each message, with a running expected-end so it does not drift. |
 | Session state machine | 200 / 422 / 400 handling, retry once through message id 11, and a guaranteed message id 11 on every exit path. |
-| Entitlements | Microphone: `NSMicrophoneUsageDescription`, and `com.apple.security.device.audio-input` if sandboxed. Local network: already handled per `CONTEXT.md`, but port 9000 outbound is a new destination and the existing grant should cover it. |
+| Entitlements | Microphone: `NSMicrophoneUsageDescription`, and `com.apple.security.device.audio-input` if sandboxed. Local network: already handled per `docs/initial-context.md`, but port 9000 outbound is a new destination and the existing grant should cover it. |
 
 ### The genuinely hard parts
 

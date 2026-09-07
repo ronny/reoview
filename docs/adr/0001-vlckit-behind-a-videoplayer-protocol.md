@@ -4,11 +4,8 @@ Status: accepted, 2026-09-06
 
 ## Context
 
-The app exists because:
-1. the official Reolink macOS app is Intel only (as of Sep 2026 🙄), a resource hog, and has awful UX
-2. even though cameras can be accessed via Home Assistant dashboard via a browser, BUT browsers
-   hold a `NoDisplaySleep` power assertion for any visible playing `<video>`, preventing display
-   sleep.
+Browsers hold a `NoDisplaySleep` power assertion for any visible playing `<video>`, preventing
+display sleep.
 
 A lightweight native player can opt out of that assertion as well as provide additional features,
 customised to how the user likes it.

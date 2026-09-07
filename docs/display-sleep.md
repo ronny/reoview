@@ -3,7 +3,7 @@
 The app exists so that video on screen does not block display sleep. See
 [ADR 0001](adr/0001-vlckit-behind-a-videoplayer-protocol.md).
 
-Measured on 2026-09-06 on Mac `tiny`, macOS 26.6.2. The first experiment used
+Measured on 2026-09-06 on macOS 26.6.2. The first experiment used
 VLC 3.x from `/Applications/VLC.app`, which embeds the same libvlc that VLCKit
 wraps. Later sections measure the app itself, on VLCKit 3.7.3 and then on 4.0.
 

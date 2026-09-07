@@ -31,8 +31,8 @@ enum LayoutMode: String, Codable, CaseIterable, Sendable, Identifiable {
 
 /// Which of one camera's streams the grid shows.
 enum StreamSelection: Hashable, Sendable, Codable {
-    /// One tile per lens, sub quality where the lens has one. The grid of
-    /// CONTEXT.md.
+    /// One tile per lens, sub quality where the lens has one. The standard
+    /// grid of `docs/initial-context.md`.
     case standard
     /// One tile per `StreamSource` the camera has.
     case all

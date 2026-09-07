@@ -439,10 +439,9 @@ final class AppState {
         return ids
     }
 
-    /// The grid per CONTEXT.md: the sub stream of every wide lens, then the
-    /// main stream of a telephoto lens, which has no sub stream. On the
-    /// verified NVR that is Front Door sub, Driveway wide sub, and Driveway
-    /// telephoto main.
+    /// The standard grid of `docs/initial-context.md`: the sub stream of every
+    /// wide lens, then the main stream of a telephoto lens, which has no sub
+    /// stream. The grid therefore mixes qualities.
     private static func standardIDs(of sources: [StreamSource]) -> [String] {
         var ids: [String] = []
         for lens in Lens.allCases {

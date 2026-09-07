@@ -77,7 +77,7 @@ struct TrustPolicyTests {
     @Test("Every other host and every other challenge falls back to the default")
     func rejectsEverythingElse() {
         #expect(policy.acceptsSelfSignedCertificate(
-            challengeHost: "192.168.8.216",
+            challengeHost: "192.0.2.11",
             authenticationMethod: NSURLAuthenticationMethodServerTrust
         ) == false)
         #expect(policy.acceptsSelfSignedCertificate(

@@ -17,7 +17,7 @@ struct SettingsView: View {
             // height, so it collapses and its fields never draw.
             Form {
                 Section("NVR") {
-                    TextField("Host", text: $host, prompt: Text("192.168.8.215"))
+                    TextField("Host", text: $host, prompt: Text("192.168.1.100"))
                     TextField("User name", text: $username)
                     SecureField("Password", text: $password, prompt: Text(passwordPrompt))
                     Text("The password is kept in the keychain, not in the app settings.")

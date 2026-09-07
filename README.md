@@ -8,15 +8,16 @@ I wanted an app that shows live video feeds from my Reolink NVR that I can just
 leave running all the time.
 
 The official Reolink macOS app is not a universal mac app, it's Intel-only
-(as of Sept 2026) so it will run emulated under Rosetta. And it runs with very
-high CPU usage most/all of the time.
+(as of Sept 2026) so it will run emulated under Rosetta. It runs with very
+high CPU usage almost all of the time. At one point it left 75 GB of log
+files on my system.
 
 I _could_ use a Home Assistant dashboard, but playing video stream in browsers
 cause the display to stay awake. Browsers hold a `NoDisplaySleep` power assertion
 for any visible playing `<video>` (check with `pmset -g assertions`). A web page
 cannot turn this off, so a dashboard left open keeps the display awake all night.
 
-## What's supported
+## Supported features
 
 - A grid of camera tiles, in three layouts: grid, stacked, and columns.
 - A choice of stream per camera, or every stream at once.
@@ -28,63 +29,12 @@ cannot turn this off, so a dashboard left open keeps the display awake all night
 - Two-way talk to the doorbell: hold to speak, or send one of a list of phrases
   that this Mac speaks and the camera plays.
 
-## What's not supported yet
+## Unsupported features
 
-- **Recordings search and playback.** Use the Reolink app for now if you need it.
+- **Recordings search and playback.** Use the official Reolink app for now.
+- **Camera / NVR configuration.** Use the official Reolink app for now.
 - **Privacy mode.** There is no HTTP command for it. It needs Baichuan, which
   the app now speaks, so this is reachable rather than blocked.
-
-## Requirements
-
-- macOS 14 or later.
-- The Xcode command line tools, for `swiftc`, `codesign`, and `xcodebuild`.
-  There is no Xcode project. See
-  [ADR 0003](docs/adr/0003-build-without-xcode.md).
-- A Reolink NVR on the local network, and a user account on it. Make a dedicated
-  admin user. PTZ and settings need admin.
-- About 1 GB of disk for the VLCKit download and the extracted framework.
-- A Developer ID Application certificate, but only to make a notarized build. A
-  local build does not need one.
-
-Developed against an RLN8-410 on firmware v3.6.5.562, with a Video Doorbell PoE
-and a TrackMix PoE. Nothing else has been tried.
-
-## Build and run
-
-```bash
-scripts/fetch-vlckit.sh          # about 900 MB, once
-scripts/build-app.sh --adhoc     # writes dist/ReoView.app
-open dist/ReoView.app
-```
-
-Then open the settings sheet from the gear in the status strip. Give it the NVR
-address, the user name, and the password. The password goes to the keychain and
-nowhere else.
-
-The first connection asks for permission to reach devices on the local network.
-Accept it, or every request fails as if the network were down.
-
-To work on the code:
-
-```bash
-swift build
-scripts/test.sh                  # not `swift test`, see below
-```
-
-`scripts/test.sh` links VLCKit into the test bundle before it runs. SwiftPM does
-not do this itself, and `swift test` fails to load the bundle without it.
-
-## Release
-
-```bash
-xcrun notarytool store-credentials reoview \
-  --apple-id you@example.com --team-id TEAMID    # once, and the name matters:
-                                                 # build-app.sh looks for reoview
-scripts/build-app.sh --notarize --verify --archive
-```
-
-The version comes from `git describe --tags`, so tag the repository first or the
-build reads 0.0.0.
 
 ## Keyboard
 
@@ -106,16 +56,11 @@ the app.
 
 ## Known limits
 
-- The countermeasure that keeps the display free depends on a private VLCKit
-  method. If a VLCKit upgrade renames it, the app blocks display sleep again and
-  does so quietly. `DisplaySleepTests` is what catches this. Re-run the
-  measurement in [docs/display-sleep.md](docs/display-sleep.md) after any
-  upgrade.
-- The siren toggle is local to the app. Nothing in the API reports whether the
-  siren is sounding, so it reads off after a restart.
-- The telephoto lens of the TrackMix plays over FLV, not RTSP, and only on
-  VLCKit 4.0. The NVR answers 404 for every RTSP form of it.
-- VLCKit 4.0 is an alpha.
+See [docs/technical-limitations.md](docs/technical-limitations.md).
+
+## Building the app
+
+See [docs/build.md](docs/build.md).
 
 ## Credits
 
@@ -134,8 +79,7 @@ sources are cited per claim in [docs/research](docs/research).
 
 | File | What it holds |
 |---|---|
-| [CONTEXT.md](CONTEXT.md) | The domain model, the verified stream URLs, and the device facts |
-| [docs/plan.md](docs/plan.md) | Milestones and what is left |
+| [docs/initial-context.md](docs/initial-context.md) | The domain model, the verified stream URLs, and the device findings |
 | [docs/adr](docs/adr) | The decisions that would be expensive to reverse |
 | [docs/display-sleep.md](docs/display-sleep.md) | Measurements of the one behavior the app exists for |
 | [docs/research](docs/research) | Protocol research, with sources |

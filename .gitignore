@@ -5,3 +5,8 @@ Vendor/
 dist/
 *.xcuserstate
 .DS_Store
+
+# Kept locally, not in version control: the owner's environment and
+# working plan. The durable technical facts live in docs/initial-context.md.
+CONTEXT.md
+docs/plan.md

@@ -330,7 +330,8 @@ fi
 # --- archive ----------------------------------------------------------------
 
 if [[ ${do_archive} -eq 1 ]]; then
-  # A future Sparkle appcast reads this name off a GitHub release. See CONTEXT.md.
+  # A future Sparkle appcast reads this name off a GitHub release.
+  # See docs/initial-context.md.
   archive="${dist_dir}/${ARCHIVE_PREFIX}-${version}.zip"
   rm -f "${archive}"
   ditto -c -k --keepParent "${app}" "${archive}"
