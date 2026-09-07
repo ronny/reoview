@@ -9,7 +9,7 @@ leave running all the time.
 
 The official Reolink macOS app is not a universal mac app, it's Intel-only
 (as of Sept 2026) so it will run emulated under Rosetta. It runs with very
-high CPU usage almost all of the time. At one point it left 75 GB of log
+high CPU usage almost all of the time. At one point it left 75 GB of SDK log
 files on my system.
 
 I _could_ use a Home Assistant dashboard, but playing video stream in browsers
@@ -75,11 +75,7 @@ Baichuan protocol notes draw on that and on
 [QuantumEntangledAndy/neolink](https://github.com/QuantumEntangledAndy/neolink);
 sources are cited per claim in [docs/research](docs/research).
 
-## Documentation
+## AI use disclosure
 
-| File | What it holds |
-|---|---|
-| [docs/initial-context.md](docs/initial-context.md) | The domain model, the verified stream URLs, and the device findings |
-| [docs/adr](docs/adr) | The decisions that would be expensive to reverse |
-| [docs/display-sleep.md](docs/display-sleep.md) | Measurements of the one behavior the app exists for |
-| [docs/research](docs/research) | Protocol research, with sources |
+All of the code in this repository was/is written by Claude Opus 5 under heavy
+supervision and direction from me.
