@@ -118,7 +118,7 @@ final class ControlsStore {
     @ObservationIgnored private let cameras: [Camera]
     @ObservationIgnored private let capabilities: Capabilities
     @ObservationIgnored private let onProbe: @MainActor (String, Bool) -> Void
-    @ObservationIgnored private let onFailure: @MainActor (String) -> Void
+    @ObservationIgnored private let onFailure: @MainActor (any Error) -> Void
     @ObservationIgnored private let onSuccess: @MainActor () -> Void
 
     @ObservationIgnored private var camerasByID: [String: Camera] = [:]
@@ -144,7 +144,7 @@ final class ControlsStore {
         cameras: [Camera],
         capabilities: Capabilities,
         onProbe: @escaping @MainActor (String, Bool) -> Void,
-        onFailure: @escaping @MainActor (String) -> Void,
+        onFailure: @escaping @MainActor (any Error) -> Void,
         onSuccess: @escaping @MainActor () -> Void
     ) {
         self.client = client
@@ -535,6 +535,6 @@ final class ControlsStore {
 
     private func report(_ error: any Error) {
         Log.controls.error("control command failed: \(error.localizedDescription, privacy: .public)")
-        onFailure(error.localizedDescription)
+        onFailure(error)
     }
 }

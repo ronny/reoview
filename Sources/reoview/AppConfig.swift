@@ -80,8 +80,9 @@ extension StreamSelection {
 struct AppConfig: Codable, Equatable, Sendable {
     /// Version 2 added `layout` and `streamSelectionByCameraID`, and dropped
     /// the saved tile order, which is now derived from the selections.
-    /// Version 3 added `uiScale`. Version 4 added `talkPhrases`.
-    static let currentVersion = 4
+    /// Version 3 added `uiScale`. Version 4 added `talkPhrases`. Version 5
+    /// added `hasCompletedOnboarding`.
+    static let currentVersion = 5
 
     /// What a fresh install offers to say through the doorbell. A config
     /// written before version 4 has no phrases key at all and gets these; a
@@ -134,6 +135,12 @@ struct AppConfig: Codable, Equatable, Sendable {
     /// offered. Edited in Settings.
     var talkPhrases: [String]
 
+    /// Whether the onboarding wizard has been through to the end. It is a
+    /// separate flag rather than a set host, because the wizard also
+    /// asks for the permissions, and clearing the host in Settings should not
+    /// put the whole wizard back.
+    var hasCompletedOnboarding: Bool
+
     init(
         version: Int = AppConfig.currentVersion,
         host: String = "",
@@ -144,7 +151,8 @@ struct AppConfig: Codable, Equatable, Sendable {
         layout: LayoutMode = .grid,
         streamSelectionByCameraID: [String: StreamSelection] = [:],
         uiScale: Double = 1,
-        talkPhrases: [String] = AppConfig.defaultTalkPhrases
+        talkPhrases: [String] = AppConfig.defaultTalkPhrases,
+        hasCompletedOnboarding: Bool = false
     ) {
         self.version = version
         self.host = host
@@ -156,6 +164,7 @@ struct AppConfig: Codable, Equatable, Sendable {
         self.streamSelectionByCameraID = streamSelectionByCameraID
         self.uiScale = Self.clampedUIScale(uiScale)
         self.talkPhrases = talkPhrases
+        self.hasCompletedOnboarding = hasCompletedOnboarding
     }
 
     enum CodingKeys: String, CodingKey {
@@ -169,6 +178,7 @@ struct AppConfig: Codable, Equatable, Sendable {
         case streamSelectionByCameraID
         case uiScale
         case talkPhrases
+        case hasCompletedOnboarding
     }
 
     /// Every field but the version is optional, so a config written by an older
@@ -191,6 +201,11 @@ struct AppConfig: Codable, Equatable, Sendable {
         uiScale = Self.clampedUIScale(try container.decodeIfPresent(Double.self, forKey: .uiScale) ?? 1)
         talkPhrases = try container
             .decodeIfPresent([String].self, forKey: .talkPhrases) ?? Self.defaultTalkPhrases
+        // A config written before version 5 belongs to an install that is
+        // already set up, so it must not be shown the wizard. An empty host
+        // means the install never got that far.
+        hasCompletedOnboarding = try container
+            .decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? !host.isEmpty
     }
 }
 

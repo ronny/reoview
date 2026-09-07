@@ -50,9 +50,13 @@ to be reachable themselves, and on most setups they are not.
 **An account on the NVR.** Make a dedicated one rather than reusing another
 client's. PTZ and settings need administrator rights.
 
-**Permission to reach devices on the local network**, on macOS 15 and later. The
-first connection asks. Refuse it and every request fails as though the network
-were down.
+**Permission to reach devices on the local network**, on macOS 15 and later.
+Refuse it and every request fails as though the network were down.
+
+A first run opens a setup wizard: the NVR address and account, then a button for
+each permission macOS gates — the local network, notifications, and the
+microphone. No prompt appears until its button is pressed, and the last two are
+optional.
 
 ### Tested against
 

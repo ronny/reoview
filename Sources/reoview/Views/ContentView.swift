@@ -4,6 +4,7 @@ struct ContentView: View {
     @Environment(AppState.self) private var state
     @Environment(\.uiScale) private var ui
     @State private var showsSettings = false
+    @State private var showsOnboarding = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +27,15 @@ struct ContentView: View {
                 .environment(state)
                 .environment(\.uiScale, ui)
         }
+        // A fresh install lands here with nothing configured, so the wizard
+        // takes the window before the grid can show an empty one. It is not
+        // dismissable: there is no app without an NVR to point it at.
+        .sheet(isPresented: $showsOnboarding) {
+            OnboardingView()
+                .environment(state)
+                .environment(\.uiScale, ui)
+        }
+        .task { showsOnboarding = state.needsOnboarding }
     }
 
     @ViewBuilder

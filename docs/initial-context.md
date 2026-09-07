@@ -248,11 +248,42 @@ Two things matter for the grant to stick:
 The app appears in System Settings, Privacy and Security, Local Network once it
 has tried to reach the NVR.
 
-The grant arrives after the request that triggered it has already failed, and
-nothing retries on its own, so a first run would sit on a stale error saying the
-internet is offline. `AppState.isLocalNetworkRefusal` recognises the code,
-replaces the message with one that says what is actually happening, and retries
-at 2, 3, 5, 8, 13 and 20 seconds. The banner also carries a Retry button.
+The grant arrives after the request that triggered it has already failed, so
+something has to ask again once it is answered. `AppState.isLocalNetworkRefusal`
+recognises the code and replaces the message with one that says what is actually
+happening. Asking again is a button, never a timer: Connect in the setup wizard,
+and Retry on the banner. An earlier build retried on a 2, 3, 5, 8, 13, 20 second
+ladder, which the wizard makes redundant — the prompt is raised by a button
+press, so there is someone there to press it again.
+
+macOS exposes no way to read the local network grant, so the wizard reports the
+only fact it has: whether the NVR answered.
+
+## Permissions are asked for by a button
+
+Three grants are needed, and macOS raises each prompt as a side effect of the
+first call that needs it. Left alone, that puts unexplained system dialogs over
+an empty window on a first run.
+
+The setup wizard asks for all three instead, one row and one button each:
+
+| Permission | Raised by | Optional |
+|---|---|---|
+| Local network | Reaching the NVR | No |
+| Notifications | `UNUserNotificationCenter.requestAuthorization` | Yes |
+| Microphone | `AVCaptureDevice.requestAccess(for: .audio)` | Yes |
+
+Which is why the credentials come first: the local network prompt needs a host
+to reach before it can be raised at all.
+
+Nothing outside the wizard raises a prompt on its own. `VisitorNotifier.activate`
+reads the standing answer and takes the delegate, and never asks. Push to talk
+still asks for the microphone if the wizard was skipped, because that press is
+a user action too.
+
+A refusal cannot be asked for twice: the second call returns the stored answer
+and shows nothing. The wizard swaps the button for one that opens the right
+System Settings pane.
 
 ## Deferred, and why
 

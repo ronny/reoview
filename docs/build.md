@@ -19,12 +19,12 @@ scripts/build-app.sh --adhoc     # writes dist/ReoView.app
 open dist/ReoView.app
 ```
 
-Then open the settings sheet from the gear in the status strip. Give it the NVR
-address, the user name, and the password. The password goes to the keychain and
-nowhere else.
+A first run opens the setup wizard. It asks for the NVR address, the user name
+and the password, which goes to the keychain and nowhere else. It then offers a
+button for each permission macOS gates: the local network, notifications, and
+the microphone. Every prompt waits for its button.
 
-The first connection asks for permission to reach devices on the local network.
-Accept it, or every request fails as if the network were down.
+Later changes go through the settings sheet, from the gear in the status strip.
 
 To work on the code:
 

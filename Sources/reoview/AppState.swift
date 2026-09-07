@@ -138,12 +138,7 @@ final class AppState {
             await startControls(client: client)
         } catch {
             Log.app.error("connect to \(host, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
-            if Self.isLocalNetworkRefusal(error) {
-                connection = .unreachable(Self.localNetworkMessage)
-                scheduleConnectRetries()
-            } else {
-                connection = .unreachable(error.localizedDescription)
-            }
+            connection = .unreachable(Self.message(for: error))
         }
     }
 
@@ -152,8 +147,9 @@ final class AppState {
     /// reports that as `NSURLErrorNotConnectedToInternet`, so the app appears
     /// to say the internet is down when the NVR is one hop away.
     ///
-    /// The grant arrives after the request has already failed, and nothing
-    /// retries on its own, so a first run gets stuck on a stale error.
+    /// The grant arrives after the request that triggered the prompt has
+    /// already failed, so something has to ask again once it is answered. That
+    /// is a button: Connect in the onboarding wizard, and Retry on the banner.
     static func isLocalNetworkRefusal(_ error: any Error) -> Bool {
         var candidates: [any Error] = [error]
         if case let .transport(underlying)? = error as? ReolinkError {
@@ -168,30 +164,23 @@ final class AppState {
     }
 
     static let localNetworkMessage =
-        "Waiting for permission to reach devices on the local network. Allow it when macOS asks, and this connects on its own."
+        "macOS is not letting ReoView reach devices on the local network. "
+            + "Allow it when asked, or turn it on in System Settings, Privacy and Security, Local Network."
 
-    /// Retries after a local network refusal, because the permission is granted
-    /// out of band and nothing else would notice.
-    private func scheduleConnectRetries() {
-        connectRetry?.cancel()
-        connectRetry = Task { [weak self] in
-            for delay in [2, 3, 5, 8, 13, 20] {
-                try? await Task.sleep(for: .seconds(delay))
-                guard let self, !Task.isCancelled else { return }
-                guard case .unreachable = connection else { return }
-                await connect()
-                if case .connected = connection { return }
-            }
-        }
+    /// What the banner says about a failure.
+    ///
+    /// Every path that reaches the banner goes through here. The connect path
+    /// used to be the only one that translated the refusal, so a refusal that
+    /// arrived on a later poll still reached the screen as "the Internet
+    /// connection appears to be offline".
+    static func message(for error: any Error) -> String {
+        isLocalNetworkRefusal(error) ? localNetworkMessage : error.localizedDescription
     }
 
-    /// Retries now, for the button on the banner.
+    /// Retries now, for the button on the banner and the one in the wizard.
     func retryConnection() async {
-        connectRetry?.cancel()
         await connect()
     }
-
-    @ObservationIgnored private var connectRetry: Task<Void, Never>?
 
     func reconnect() async {
         await teardown()
@@ -251,8 +240,8 @@ final class AppState {
             onProbe: { [weak self] present in
                 self?.recordProbe(command: GetEvents.cmd, present: present)
             },
-            onLastingFailure: { [weak self] message in
-                self?.noteEventPollFailure(message)
+            onLastingFailure: { [weak self] error in
+                self?.noteEventPollFailure(error)
             },
             onRecovery: { [weak self] in
                 self?.noteEventPollRecovery()
@@ -272,9 +261,9 @@ final class AppState {
 
     /// A poll that keeps failing means the NVR is gone, so it reuses the one
     /// global banner rather than adding a second signal.
-    private func noteEventPollFailure(_ message: String) {
+    private func noteEventPollFailure(_ error: any Error) {
         guard connection == .connected else { return }
-        connection = .unreachable(message)
+        connection = .unreachable(Self.message(for: error))
     }
 
     private func noteEventPollRecovery() {
@@ -299,8 +288,8 @@ final class AppState {
             onProbe: { [weak self] command, present in
                 self?.recordProbe(command: command, present: present)
             },
-            onFailure: { [weak self] message in
-                self?.noteControlFailure(message)
+            onFailure: { [weak self] error in
+                self?.noteControlFailure(Self.message(for: error))
             },
             onSuccess: { [weak self] in
                 self?.clearControlFailure()
@@ -657,7 +646,20 @@ final class AppState {
 
     /// Saving new credentials always retries, whatever the banner says.
     func saveSettings(host: String, username: String, password: String) async {
-        connectRetry?.cancel()
+        guard await storeCredentials(host: host, username: username, password: password) else { return }
+        await reconnect()
+    }
+
+    /// Writes the credentials down without touching the network.
+    ///
+    /// The wizard needs this: reaching the NVR is what raises the local network
+    /// prompt on macOS 15, and that has to wait for its own button rather than
+    /// happen behind a Continue.
+    ///
+    /// Returns false when the keychain refused, which is the only way this
+    /// fails.
+    @discardableResult
+    func storeCredentials(host: String, username: String, password: String) async -> Bool {
         let previous = (username: config.config.username, host: config.config.host)
 
         if !password.isEmpty {
@@ -665,7 +667,7 @@ final class AppState {
                 try KeychainStore.setPassword(password, username: username, host: host)
             } catch {
                 connection = .unreachable("Could not save the password to the keychain")
-                return
+                return false
             }
         }
 
@@ -675,7 +677,17 @@ final class AppState {
 
         config.config.host = host
         config.config.username = username
-        await reconnect()
+        return true
+    }
+
+    // MARK: - Onboarding
+
+    /// True until the wizard has been through to the end. See
+    /// `AppConfig.hasCompletedOnboarding`.
+    var needsOnboarding: Bool { !config.config.hasCompletedOnboarding }
+
+    func completeOnboarding() {
+        config.config.hasCompletedOnboarding = true
     }
 }
 

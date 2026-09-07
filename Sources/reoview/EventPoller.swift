@@ -38,7 +38,7 @@ final class EventPoller {
     private let store: EventStatusStore
     private let notifier: VisitorNotifier
     private let onProbe: @MainActor (Bool) -> Void
-    private let onLastingFailure: @MainActor (String) -> Void
+    private let onLastingFailure: @MainActor (any Error) -> Void
     private let onRecovery: @MainActor () -> Void
 
     private var mode: Mode = .unprobed
@@ -60,7 +60,7 @@ final class EventPoller {
         store: EventStatusStore,
         notifier: VisitorNotifier,
         onProbe: @escaping @MainActor (Bool) -> Void,
-        onLastingFailure: @escaping @MainActor (String) -> Void,
+        onLastingFailure: @escaping @MainActor (any Error) -> Void,
         onRecovery: @escaping @MainActor () -> Void
     ) {
         self.client = client
@@ -196,11 +196,16 @@ final class EventPoller {
 
     /// A failed poll never stops the loop. It only reaches the banner once it
     /// has lasted.
+    ///
+    /// The error goes out whole, not as a string. `AppState` has to look inside
+    /// it: a local network refusal arrives as `NSURLErrorNotConnectedToInternet`
+    /// and its stock message says the internet is offline, which is nonsense
+    /// about a device on this network.
     private func noteFailure(_ error: any Error) {
         consecutiveFailures += 1
         Log.events.error("event poll failed: \(error.localizedDescription, privacy: .public)")
         guard consecutiveFailures == Self.failuresBeforeBanner else { return }
-        onLastingFailure(error.localizedDescription)
+        onLastingFailure(error)
     }
 
     private func noteSuccess() {
