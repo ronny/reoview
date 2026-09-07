@@ -8,7 +8,11 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let message = state.bannerMessage {
-                BannerView(message: message) { showsSettings = true }
+                BannerView(
+                    message: message,
+                    onSettings: { showsSettings = true },
+                    onRetry: { Task { await state.retryConnection() } }
+                )
             }
 
             content
@@ -41,12 +45,15 @@ private struct BannerView: View {
 
     let message: String
     var onSettings: () -> Void
+    var onRetry: () -> Void
 
     var body: some View {
         HStack(spacing: ui.length(8)) {
             Image(systemName: "exclamationmark.triangle.fill")
             Text(message)
             Spacer()
+            Button("Retry", action: onRetry)
+                .buttonStyle(.link)
             Button("Settings", action: onSettings)
                 .buttonStyle(.link)
         }

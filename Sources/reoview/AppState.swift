@@ -135,9 +135,60 @@ final class AppState {
             await startControls(client: client)
         } catch {
             Log.app.error("connect to \(host, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
-            connection = .unreachable(error.localizedDescription)
+            if Self.isLocalNetworkRefusal(error) {
+                connection = .unreachable(Self.localNetworkMessage)
+                scheduleConnectRetries()
+            } else {
+                connection = .unreachable(error.localizedDescription)
+            }
         }
     }
+
+    /// macOS 15 and later gate access to the local network per app, and the
+    /// first request is refused while the prompt is on screen. `URLSession`
+    /// reports that as `NSURLErrorNotConnectedToInternet`, so the app appears
+    /// to say the internet is down when the NVR is one hop away.
+    ///
+    /// The grant arrives after the request has already failed, and nothing
+    /// retries on its own, so a first run gets stuck on a stale error.
+    static func isLocalNetworkRefusal(_ error: any Error) -> Bool {
+        var candidates: [any Error] = [error]
+        if case let .transport(underlying)? = error as? ReolinkError {
+            candidates.append(underlying)
+        }
+        return candidates.contains { candidate in
+            let ns = candidate as NSError
+            return ns.domain == NSURLErrorDomain
+                && (ns.code == NSURLErrorNotConnectedToInternet
+                    || ns.code == NSURLErrorNetworkConnectionLost)
+        }
+    }
+
+    static let localNetworkMessage =
+        "Waiting for permission to reach devices on the local network. Allow it when macOS asks, and this connects on its own."
+
+    /// Retries after a local network refusal, because the permission is granted
+    /// out of band and nothing else would notice.
+    private func scheduleConnectRetries() {
+        connectRetry?.cancel()
+        connectRetry = Task { [weak self] in
+            for delay in [2, 3, 5, 8, 13, 20] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self, !Task.isCancelled else { return }
+                guard case .unreachable = connection else { return }
+                await connect()
+                if case .connected = connection { return }
+            }
+        }
+    }
+
+    /// Retries now, for the button on the banner.
+    func retryConnection() async {
+        connectRetry?.cancel()
+        await connect()
+    }
+
+    @ObservationIgnored private var connectRetry: Task<Void, Never>?
 
     func reconnect() async {
         await teardown()
@@ -581,7 +632,9 @@ final class AppState {
 
     // MARK: - Settings
 
+    /// Saving new credentials always retries, whatever the banner says.
     func saveSettings(host: String, username: String, password: String) async {
+        connectRetry?.cancel()
         let previous = (username: config.config.username, host: config.config.host)
 
         if !password.isEmpty {
