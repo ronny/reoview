@@ -98,15 +98,69 @@ Channel 0 and channel 1 return byte-identical XML.
 </TalkAbility>
 ```
 
-### What is still untested
+### Talk works. Three of the guesses above were wrong
 
-No message 202 was ever sent, so "the speaker plays what we push" is inferred.
-Everything up to the NVR opening and feeding a live session is measured.
+The doorbell played a clean 700 Hz tone and then intelligible speech on
+2026-09-07. What made the difference came from a packet capture of Reolink's own
+macOS app talking to this NVR, not from reasoning about the sources.
 
-The encoder-side unknowns stand: ADPCM nibble order, the BcMedia padding rule,
-and the half-block field. One risk moved up. Outbound audio must encrypt its
-payload and declare `encryptLen`, which neither neolink nor reolink_aio does,
-because neither meets a device that forces FullAes.
+Before the capture, every block was accepted without error and nothing came out
+of the speaker. A wrong frame is discarded in silence.
+
+Two things were wrong, and two others only looked wrong.
+
+**The two that mattered:**
+
+| Field | What was assumed | What the app sends |
+|---|---|---|
+| Binary payload of message 202 | AES encrypted, with `encryptLen` declared, mirroring the inbound frames | **Plaintext.** The extension stays encrypted. |
+| `corr` on message 202 | the number the talk session was opened with | **0** |
+
+**The two that did not matter.** The capture also showed the BcMedia header
+differing, and it is tempting to record that as part of the fix. It was not.
+The run that first made the doorbell speak still used the `neolinkRust` rules,
+because the client's configuration defaulted to them and only
+`BcMedia.adpcmFrame` had been changed. So the device accepted a frame four
+bytes longer, carrying 256 where the vendor sends 2, and played it correctly.
+
+| Field | neolink Rust | Reolink's app | Device behaviour |
+|---|---|---|---|
+| Offset 10 | 256 | 2 | ignored |
+| Padding | 4 bytes | none | ignored |
+
+neolink's parser guesses as much: "on some camera this value is just 2". This
+NVR ignores both. `reolinkApp` is the default now anyway, because matching the
+vendor byte for byte is the safer bet on firmware nobody here has seen, but it
+is a preference and not a fix.
+
+The vendor's header, for reference:
+
+```
+30 31 77 62 08 02 08 02 00 01 02 00     "01wb", 520, 520, 0x0100, 2
+```
+
+The encoder needed no change. ADPCM nibble order, the DVI state header and the
+pacing were all right first time, which the steady tone confirms.
+
+Two smaller findings from the doorbell:
+
+- Releasing the slot 100 ms after the last block cuts the final word. The device
+  plays from its own buffer. 400 ms of trailing silence and an 800 ms playout
+  wait fixed it.
+- Audio carries a little crackle. It was not localised. There is no clipping,
+  and IMA ADPCM at 16 kHz is a lossy format, so some roughness is expected.
+
+### How the capture was taken
+
+The official Reolink app runs on macOS and can talk to a doorbell behind this
+NVR. Quit it, start a capture, then start it again so the login is included:
+
+```bash
+sudo tcpdump -i any -s 0 -w talk.pcap 'host 192.168.8.215 and port 9000'
+```
+
+macOS writes pcapng, not pcap. Frame headers are plaintext, so message ids,
+lengths, `corr` and the payload offset can be read without any key.
 
 ## Sources
 

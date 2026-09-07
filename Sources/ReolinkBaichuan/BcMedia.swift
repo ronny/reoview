@@ -3,10 +3,13 @@ import Foundation
 /// Which serializer to copy for the two BcMedia fields that the working
 /// implementations disagree on.
 ///
-/// Both rules come from code that drives real cameras, and they differ by four
-/// bytes per frame. `neolinkRust` is the default because it is the serializer
-/// inside `QuantumEntangledAndy/neolink`, the only complete talk implementation
-/// read that is known to make cameras speak.
+/// This NVR ignores both fields. The doorbell spoke with `neolinkRust`, whose
+/// frame is four bytes longer and carries 256 where Reolink's own app sends 2.
+/// `reolinkApp` is the default anyway, because matching the vendor's client
+/// byte for byte is the safer bet on firmware nobody here has seen.
+///
+/// What did matter, and is not configurable: the binary payload goes in the
+/// clear, and message 202 carries message number 0.
 public enum BcMediaFrameRules: Sendable, Equatable, CaseIterable {
     /// `crates/core/src/bcmedia/ser.rs`. Half block is `(len - 4) / 2`, and the
     /// pad is measured from the block length itself.
@@ -15,6 +18,12 @@ public enum BcMediaFrameRules: Sendable, Equatable, CaseIterable {
     /// is `len / 2`, and the pad is measured from the block length plus the
     /// four header bytes, which for a 516-byte block means no padding at all.
     case neolinkDotNet
+
+    /// What Reolink's own macOS app sends to this NVR, captured from the wire
+    /// on 2026-09-07: the field at offset 10 is 2, and there is no padding.
+    /// neolink's parser predicts this case — "on some camera this value is just
+    /// 2" — but neither implementation defaults to it.
+    case reolinkApp
 }
 
 /// The BcMedia container the talk payload is wrapped in.
@@ -43,7 +52,7 @@ public enum BcMedia {
     }
 
     /// Wraps one ADPCM block, DVI state header included, in a BcMedia frame.
-    public static func adpcmFrame(block: Data, rules: BcMediaFrameRules = .neolinkRust) -> Data {
+    public static func adpcmFrame(block: Data, rules: BcMediaFrameRules = .reolinkApp) -> Data {
         let length = block.count
         var frame = Data(capacity: adpcmHeaderLength + length + padSize)
         frame.appendLittleEndian(adpcmMagic)
@@ -66,6 +75,7 @@ public enum BcMedia {
         switch rules {
         case .neolinkRust: max(0, blockLength - dviStateLength) / 2
         case .neolinkDotNet: blockLength / 2
+        case .reolinkApp: 2
         }
     }
 
@@ -74,9 +84,11 @@ public enum BcMedia {
     /// This is the riskier of the two disputed fields, because it changes how
     /// many bytes the device has to skip before the next frame.
     public static func paddingLength(blockLength: Int, rules: BcMediaFrameRules) -> Int {
+        if case .reolinkApp = rules { return 0 }
         let base: Int = switch rules {
         case .neolinkRust: blockLength
         case .neolinkDotNet: blockLength + dviStateLength
+        case .reolinkApp: 0
         }
         let remainder = base % padSize
         return remainder == 0 ? 0 : padSize - remainder

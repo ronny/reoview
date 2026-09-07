@@ -34,7 +34,7 @@ public actor BaichuanClient {
             requestTimeout: Duration = .seconds(5),
             releaseTimeout: Duration = .seconds(3),
             keepaliveInterval: Duration = .seconds(30),
-            frameRules: BcMediaFrameRules = .neolinkRust
+            frameRules: BcMediaFrameRules = .reolinkApp
         ) {
             self.requestTimeout = requestTimeout
             self.releaseTimeout = releaseTimeout
@@ -274,22 +274,25 @@ public actor BaichuanClient {
         let offset = UInt32(channelID)
         let media = BcMedia.adpcmFrame(block: block, rules: configuration.frameRules)
 
-        let encryptsPayload = encryptionLevel.encryptsBinaryPayloads
-        // AES-CFB is length preserving, so the declared length is both the
-        // plaintext and the on-wire count. `bodyLength` and `payloadOffset`
-        // are computed from the bytes about to be written either way.
-        let payload = encryptsPayload ? try cipher.encrypt(media, offset: offset) : media
-        let extensionXML = BcXML.talkExtension(
-            channel: channel,
-            encryptLen: encryptsPayload ? payload.count : nil
-        )
+        // The binary payload goes in the clear, even under FullAes, and the
+        // extension declares no encryptLen. This contradicts the inbound
+        // direction, where the NVR encrypts what it sends us and does declare
+        // it. Captured from Reolink's own macOS app talking to this NVR on
+        // 2026-09-07: its 202 payloads start with a plaintext "01wb".
+        //
+        // Encrypting it is silently accepted. The session opens, every block is
+        // taken without error, and the doorbell plays nothing.
+        let payload = media
+        let extensionXML = BcXML.talkExtension(channel: channel, encryptLen: nil)
         let extensionBytes = try cipher.encrypt(Data(extensionXML.utf8), offset: offset)
 
         let header = BcHeader(
             messageID: BcMessageID.talk,
             bodyLength: UInt32(extensionBytes.count + payload.count),
             channelID: channelID,
-            messageNumber: state.messageNumber,
+            // The official app sends 0 here on every 202, not the number the
+            // talk session was opened with.
+            messageNumber: 0,
             payloadOffset: UInt32(extensionBytes.count)
         )
         // The camera sends no reply to a talk message, so this does not wait.

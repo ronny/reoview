@@ -133,7 +133,8 @@ private struct ControlsOverlay: View {
             }
             if hasSiren {
                 IconButton(
-                    symbol: values.sirenOn ? "speaker.wave.3.fill" : "speaker.wave.3",
+                    // A beacon, not a speaker: the speaker symbols read as volume.
+                    symbol: values.sirenOn ? "light.beacon.max.fill" : "light.beacon.max",
                     help: values.sirenOn ? "Stop the siren" : "Sound the siren on the camera",
                     isOn: values.sirenOn,
                     tint: .red,

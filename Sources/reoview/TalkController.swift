@@ -334,14 +334,28 @@ final class TalkController {
                 try await session.send(block: block)
             }
         }
+        // The device plays from its own buffer, so the last word is clipped
+        // unless it is given something after it. Measured against the doorbell:
+        // 100 ms of playout wait cut "parcel" in half, and this does not.
+        for block in encoder.encode(Self.trailingSilence(format)) {
+            try await pacer.waitForSlot(samples: format.samplesPerBlock)
+            try await session.send(block: block)
+        }
         if let tail = encoder.finish() {
             try await pacer.waitForSlot(samples: format.samplesPerBlock)
             try await session.send(block: tail)
         }
-        // The camera plays what it has been given at its own rate. Releasing
-        // the slot before it has caught up cuts the tail off the phrase.
-        try await pacer.waitForPlayout()
+        try await pacer.waitForPlayout(extra: Self.playoutTail)
     }
+
+    /// Silence appended after a phrase, so the device has something to play
+    /// while it catches up.
+    private static func trailingSilence(_ format: ReolinkAudio.TalkAudioFormat) -> [Int16] {
+        [Int16](repeating: 0, count: format.sampleRate * 400 / 1000)
+    }
+
+    /// How long to hold the talk slot open after the last block.
+    private static let playoutTail: Duration = .milliseconds(800)
 
     /// `ReolinkAudio` reports through `CustomStringConvertible` rather than
     /// `LocalizedError`, and `localizedDescription` on one of those reads as

@@ -139,9 +139,15 @@ struct CommandTests {
 
 @Suite("Talk")
 struct TalkTests {
+    /// The first 12 bytes of the message 202 payload Reolink's own macOS app
+    /// put on the wire for a 516-byte block: "01wb", 520, 520, 0x0100, then 2.
+    private let capturedTalkHeader = Data([
+        0x30, 0x31, 0x77, 0x62, 0x08, 0x02, 0x08, 0x02, 0x00, 0x01, 0x02, 0x00,
+    ])
+
     private func connectedClient(
         _ device: FakeDevice,
-        rules: BcMediaFrameRules = .neolinkRust
+        rules: BcMediaFrameRules = .reolinkApp
     ) async throws -> BaichuanClient {
         let client = BaichuanClient(
             connection: device,
@@ -200,9 +206,10 @@ struct TalkTests {
         await client.disconnect()
     }
 
-    /// The one that matters on the first live attempt: the message 202 frame,
-    /// end to end, through the fake connection.
-    @Test("Message 202 encrypts the payload, declares encryptLen, and wraps the block in BcMedia")
+    /// The one that matters on the wire: the message 202 frame, end to end,
+    /// through the fake connection. Every value here comes from a capture of
+    /// Reolink's own macOS app talking to this NVR on 2026-09-07.
+    @Test("Message 202 sends a plaintext BcMedia frame, no encryptLen, message number 0")
     func sendBlock() async throws {
         let device = FakeDevice()
         let client = try await connectedClient(device)
@@ -229,44 +236,54 @@ struct TalkTests {
         let extensionXML = try await String(decoding: device.decryptAES(sent.extensionBytes), as: UTF8.self)
         #expect(extensionXML.contains("<binaryData>1</binaryData>"))
         #expect(extensionXML.contains("<channelId>0</channelId>"))
-        #expect(extensionXML.contains("<encryptLen>532</encryptLen>"))
+        // The session negotiated FullAes, and the NVR still encrypts the 202
+        // frames it pushes at us, but nothing outbound declares a length.
+        #expect(!extensionXML.contains("encryptLen"))
 
-        // The payload is encrypted, not plaintext.
-        #expect(sent.payloadBytes.prefix(4) != Data([0x30, 0x31, 0x77, 0x62]))
-        #expect(sent.payloadBytes.count == 532)
+        // The message number is 0 on every outbound 202, not the number the
+        // talk session was opened with.
+        #expect(sent.header.messageNumber == 0)
 
-        // And it decrypts to the BcMedia frame the device is meant to read.
-        let media = try await device.decryptAES(sent.payloadBytes)
-        #expect(media.count == 532)
-        #expect(media.prefix(4) == Data([0x30, 0x31, 0x77, 0x62]))
-        #expect(media.readLittleEndian(at: 4) as UInt16 == 520)
-        #expect(media.readLittleEndian(at: 6) as UInt16 == 520)
-        #expect(media.readLittleEndian(at: 8) as UInt16 == 0x0100)
-        #expect(media.readLittleEndian(at: 10) as UInt16 == 256)
-        #expect(media.dropFirst(12).prefix(516) == block)
-        #expect(media.suffix(4) == Data(count: 4))
+        // The payload is plaintext, not ciphertext. Encrypting it is accepted
+        // without error by the device, which then plays nothing.
+        #expect(sent.payloadBytes.count == 528)
+        #expect(sent.payloadBytes.prefix(12) == capturedTalkHeader)
+        #expect(sent.payloadBytes.readLittleEndian(at: 4) as UInt16 == 520)
+        #expect(sent.payloadBytes.readLittleEndian(at: 6) as UInt16 == 520)
+        #expect(sent.payloadBytes.readLittleEndian(at: 8) as UInt16 == 0x0100)
+        #expect(sent.payloadBytes.readLittleEndian(at: 10) as UInt16 == 2)
+        #expect(sent.payloadBytes.dropFirst(12) == block)
 
         await session.stop()
         await client.disconnect()
     }
 
-    @Test("encryptLen follows the frame rules, so the .NET layout declares 528")
-    func encryptLenFollowsRules() async throws {
+    @Test(
+        "The frame rules set the payload length, and none of them declares encryptLen",
+        arguments: [
+            (BcMediaFrameRules.reolinkApp, 528, UInt16(2)),
+            (BcMediaFrameRules.neolinkRust, 532, UInt16(256)),
+            (BcMediaFrameRules.neolinkDotNet, 528, UInt16(258)),
+        ]
+    )
+    func frameRulesSetPayloadLength(rules: BcMediaFrameRules, length: Int, halfBlock: UInt16) async throws {
         let device = FakeDevice()
-        let client = try await connectedClient(device, rules: .neolinkDotNet)
+        let client = try await connectedClient(device, rules: rules)
         let ability = try await client.talkAbility(channel: 0)
         let session = try await client.startTalk(channel: 0, ability: ability)
 
         try await session.send(block: Data(repeating: 0x11, count: 516))
         let sent = try #require(await device.frames(messageID: BcMessageID.talk).first)
         let extensionXML = try await String(decoding: device.decryptAES(sent.extensionBytes), as: UTF8.self)
-        #expect(extensionXML.contains("<encryptLen>528</encryptLen>"))
-        #expect(sent.payloadBytes.count == 528)
+        #expect(!extensionXML.contains("encryptLen"))
+        #expect(sent.payloadBytes.count == length)
+        #expect(sent.payloadBytes.prefix(4) == Data([0x30, 0x31, 0x77, 0x62]))
+        #expect(sent.payloadBytes.readLittleEndian(at: 10) as UInt16 == halfBlock)
         await client.disconnect()
     }
 
-    @Test("Every message 202 in one session reuses the same message number")
-    func oneMessageNumberPerStream() async throws {
+    @Test("Every message 202 carries message number 0, not the one talk was opened with")
+    func everyTalkMessageNumberIsZero() async throws {
         let device = FakeDevice()
         let client = try await connectedClient(device)
         let ability = try await client.talkAbility(channel: 0)
@@ -275,10 +292,12 @@ struct TalkTests {
         let block = Data(repeating: 0x22, count: 516)
         for _ in 0..<3 { try await session.send(block: block) }
 
-        let numbers = await Set(device.frames(messageID: BcMessageID.talk).map(\.header.correlationID))
-        #expect(numbers.count == 1)
-        let configNumber = try #require(await device.frames(messageID: BcMessageID.talkConfig).first?.header.correlationID)
-        #expect(numbers.first == configNumber)
+        let numbers = await Set(device.frames(messageID: BcMessageID.talk).map(\.header.messageNumber))
+        #expect(numbers == [0])
+        // Message 201 still gets a real number, so the 0 above is a deliberate
+        // choice rather than an unopened session leaking through.
+        let configNumber = try #require(await device.frames(messageID: BcMessageID.talkConfig).first?.header.messageNumber)
+        #expect(configNumber != 0)
         await client.disconnect()
     }
 
