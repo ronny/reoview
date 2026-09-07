@@ -11,38 +11,39 @@ struct SettingsView: View {
     @State private var isSaving = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ui.length(16)) {
-            Text("NVR").font(ui.font(13, weight: .semibold))
-
+        VStack(spacing: 0) {
+            // One Form with sections, not several stacked in a VStack. A
+            // grouped Form nested in a VStack inside a sheet is offered no
+            // height, so it collapses and its fields never draw.
             Form {
-                TextField("Host", text: $host, prompt: Text("192.168.8.215"))
-                TextField("User name", text: $username)
-                SecureField("Password", text: $password, prompt: Text(passwordPrompt))
-            }
-            .formStyle(.grouped)
+                Section("NVR") {
+                    TextField("Host", text: $host, prompt: Text("192.168.8.215"))
+                    TextField("User name", text: $username)
+                    SecureField("Password", text: $password, prompt: Text(passwordPrompt))
+                    Text("The password is kept in the keychain, not in the app settings.")
+                        .font(ui.font(10))
+                        .foregroundStyle(.secondary)
+                }
 
-            Text("The password is kept in the keychain, not in the app settings.")
-                .font(ui.font(10))
-                .foregroundStyle(.secondary)
-
-            Text("Appearance").font(ui.font(13, weight: .semibold))
-
-            Form {
-                LabeledContent("Text size") {
-                    HStack(spacing: ui.length(8)) {
-                        Slider(value: scale, in: AppConfig.uiScaleRange, step: 0.1)
-                            .accessibilityLabel("Text size")
-                        Text(scalePercentage)
-                            .monospacedDigit()
-                            .frame(width: ui.length(44), alignment: .trailing)
+                Section("Appearance") {
+                    LabeledContent("Text size") {
+                        HStack(spacing: ui.length(8)) {
+                            Slider(value: scale, in: AppConfig.uiScaleRange, step: 0.1)
+                                .accessibilityLabel("Text size")
+                            Text(scalePercentage)
+                                .monospacedDigit()
+                                .frame(width: ui.length(44), alignment: .trailing)
+                        }
                     }
+                }
+
+                Section("Talk") {
+                    PhrasesEditor()
                 }
             }
             .formStyle(.grouped)
 
-            Text("Talk").font(ui.font(13, weight: .semibold))
-
-            PhrasesEditor()
+            Divider()
 
             HStack {
                 Spacer()
@@ -52,10 +53,10 @@ struct SettingsView: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(host.isEmpty || username.isEmpty || isSaving)
             }
+            .padding(ui.length(16))
         }
         .font(ui.font(13))
-        .padding(ui.length(20))
-        .frame(width: ui.length(420))
+        .frame(width: ui.length(460), height: ui.length(560))
         .task {
             host = state.config.config.host
             username = state.config.config.username
