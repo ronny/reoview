@@ -1,19 +1,15 @@
 # Building the app
 
-## Requirements
+## What building needs
 
-- macOS 14 or later.
-- The Xcode command line tools, for `swiftc`, `codesign`, and `xcodebuild`.
-  There is no Xcode project. See
-  [ADR 0003](docs/adr/0003-build-without-xcode.md).
-- A Reolink NVR on the local network, and a user account on it. Make a dedicated
-  admin user. PTZ and settings need admin.
+- The Xcode command line tools, for `swiftc`, `codesign` and `xcodebuild`. There
+  is no Xcode project. See [ADR 0003](adr/0003-build-without-xcode.md).
 - About 1 GB of disk for the VLCKit download and the extracted framework.
-- A Developer ID Application certificate, but only to make a notarized build. A
-  local build does not need one.
+- A Developer ID Application certificate, but only to notarize. A local build
+  does not need one.
 
-Developed against an RLN8-410 on firmware v3.6.5.562, with a Video Doorbell PoE
-and a TrackMix PoE. Nothing else has been tried.
+What *running* it needs, and the hardware it has been tried against, is in the
+README under "Runtime requirements".
 
 ## Build and run
 
