@@ -2,18 +2,21 @@
 
 A small native macOS app that shows the cameras on a Reolink NVR.
 
-It replaces the Reolink macOS app and a Home Assistant dashboard for live
-viewing. It talks to the NVR directly, so no other service sits in the video
-path.
-
 ## Why it exists
 
-Browsers hold a `NoDisplaySleep` power assertion for any visible playing
-`<video>`. A web page cannot turn this off, so a dashboard left open keeps the
-display awake all night. ReoView holds no assertion. This is measured, not
-assumed: see [docs/display-sleep.md](docs/display-sleep.md).
+I wanted an app that shows live video feeds from my Reolink NVR that I can just
+leave running all the time.
 
-## What it does
+The official Reolink macOS app is not a universal mac app, it's Intel-only
+(as of Sept 2026) so it will run emulated under Rosetta. And it runs with very
+high CPU usage most/all of the time.
+
+I _could_ use a Home Assistant dashboard, but playing video stream in browsers
+cause the display to stay awake. Browsers hold a `NoDisplaySleep` power assertion
+for any visible playing `<video>` (check with `pmset -g assertions`). A web page
+cannot turn this off, so a dashboard left open keeps the display awake all night.
+
+## What's supported
 
 - A grid of camera tiles, in three layouts: grid, stacked, and columns.
 - A choice of stream per camera, or every stream at once.
@@ -22,19 +25,14 @@ assumed: see [docs/display-sleep.md](docs/display-sleep.md).
   appears only when the device reports it.
 - Motion, person, vehicle, and doorbell visitor state in the status strip, with
   a macOS notification when a visitor arrives.
-- Players stop when the display sleeps, and start again on wake.
+- Two-way talk to the doorbell: hold to speak, or send one of a list of phrases
+  that this Mac speaks and the camera plays.
 
-## What it does not do
+## What's not supported yet
 
-- **Recordings.** Use the Reolink app. See
-  [docs/plan.md](docs/plan.md).
-- **Two-way talk.** It needs the Baichuan protocol on port 9000, and it is not
-  yet known whether an NVR carries it at all. See
-  [docs/research/baichuan-talk.md](docs/research/baichuan-talk.md).
-- **Privacy mode.** There is no HTTP command for it. It needs Baichuan.
-- **Quick reply clips.** The app plays them but cannot make them. Record one in
-  the Reolink mobile app first, or the list stays empty.
-- **iOS.** The UI is SwiftUI, so a target is possible, but none exists.
+- **Recordings search and playback.** Use the Reolink app for now if you need it.
+- **Privacy mode.** There is no HTTP command for it. It needs Baichuan, which
+  the app now speaks, so this is reachable rather than blocked.
 
 ## Requirements
 
@@ -80,7 +78,8 @@ not do this itself, and `swift test` fails to load the bundle without it.
 
 ```bash
 xcrun notarytool store-credentials reoview \
-  --apple-id you@example.com --team-id TEAMID    # once
+  --apple-id you@example.com --team-id TEAMID    # once, and the name matters:
+                                                 # build-app.sh looks for reoview
 scripts/build-app.sh --notarize --verify --archive
 ```
 

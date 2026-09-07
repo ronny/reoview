@@ -53,3 +53,37 @@ extension ReolinkError: LocalizedError {
         }
     }
 }
+
+public extension ReolinkError {
+    /// What a failed probe says about whether the command exists.
+    ///
+    /// Several commands carry no `GetAbility` key, so the only way to learn
+    /// whether a device has one is to send it. The distinction matters: a
+    /// refusal is an answer, and a dropped connection is not. Recording a
+    /// transport failure as "absent" would hide a control until the app is
+    /// restarted.
+    enum CommandPresence: Sendable, Equatable {
+        /// The device answered, and the answer was a refusal.
+        case absent
+        /// Nothing was learned. Ask again later.
+        case inconclusive
+    }
+
+    /// A refusal from the NVR, or a body this app cannot read, both mean the
+    /// command is unusable. A transport failure says nothing either way.
+    var commandPresence: CommandPresence {
+        switch self {
+        case let .api(_, rspCode, _): rspCode == Self.badTokenCode ? .inconclusive : .absent
+        case .decoding: .absent
+        case .transport, .httpStatus, .authentication: .inconclusive
+        }
+    }
+}
+
+public extension Error {
+    /// `inconclusive` for anything that is not a `ReolinkError`: an unknown
+    /// failure is not evidence that a command is missing.
+    var commandPresence: ReolinkError.CommandPresence {
+        (self as? ReolinkError)?.commandPresence ?? .inconclusive
+    }
+}

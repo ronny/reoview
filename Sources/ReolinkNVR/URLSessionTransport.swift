@@ -11,6 +11,9 @@ public final class URLSessionTransport: Transport {
 
     public init(trustingSelfSignedCertificateFor host: String, configuration: URLSessionConfiguration = .ephemeral) {
         delegate = TrustDelegate(host: host)
+        // Belt and braces. `NVRClient` is what keeps one request in flight; a
+        // connection limit cannot promise that for another `Transport`, and it
+        // says nothing about HTTP/2.
         configuration.httpMaximumConnectionsPerHost = 1
         session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }

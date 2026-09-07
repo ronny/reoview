@@ -3,9 +3,14 @@ import VLCKit
 
 /// Owns the one `VLCLibrary` the app uses.
 ///
-/// The library exists to carry `--no-disable-screensaver`. libvlc inhibits the
-/// screensaver by default whenever a video output is active, which is the
-/// behaviour this app exists to avoid. See ADR 0001.
+/// The library carries the options below, and `--disable-screensaver=0` is the
+/// one that matters. Note the spelling: libvlc 4.0 made the option an integer,
+/// and the 3.x form `--no-disable-screensaver` stops the library initialising
+/// at all.
+///
+/// That option only governs libvlc's own inhibit module. VLCKit takes a
+/// separate display sleep assertion from its Objective-C layer, which no option
+/// reaches. See `DisplaySleep` and ADR 0010.
 ///
 /// `VLCLibrary.sharedLibrary()` takes no options, so every player must be built
 /// against this instance instead.

@@ -134,30 +134,20 @@ final class EventPoller {
     /// `reolink_aio` finds `GetEvents` by sending it once and looking for a
     /// response element that is not an error, so the probe is just the first
     /// poll. Its result is recorded on `Capabilities` through `onProbe`.
+    ///
+    /// A transport failure says nothing either way, so it leaves the probe open
+    /// and the next poll tries `GetEvents` again.
     private func probeAndPoll() async throws {
         do {
             try await pollEvents()
             mode = .events
             onProbe(true)
             Log.events.info("GetEvents is present")
-        } catch let error where Self.isMissingCommand(error) {
+        } catch let error where error.commandPresence == .absent {
             mode = .legacy
             onProbe(false)
             Log.events.info("GetEvents is absent, falling back to GetMdState and GetAiState")
             try await pollLegacy()
-        }
-    }
-
-    /// An answer that is not an error means the command exists. A refusal from
-    /// the NVR, or a body this app cannot read, both mean it is unusable. A
-    /// transport failure says nothing either way, so it leaves the probe open
-    /// and the next poll tries `GetEvents` again.
-    private static func isMissingCommand(_ error: any Error) -> Bool {
-        guard let error = error as? ReolinkError else { return false }
-        switch error {
-        case let .api(_, rspCode, _): return rspCode != ReolinkError.badTokenCode
-        case .decoding: return true
-        case .transport, .httpStatus, .authentication: return false
         }
     }
 
@@ -178,7 +168,7 @@ final class EventPoller {
         if hasGetAiState {
             do {
                 ai = try await client.send(channels.map { (command: GetAiState(), channel: $0.channel) })
-            } catch let error where Self.isMissingCommand(error) {
+            } catch let error where error.commandPresence == .absent {
                 hasGetAiState = false
                 Log.events.info("GetAiState is absent, motion only")
             }

@@ -1,5 +1,4 @@
 import AVFoundation
-import AppKit
 import Foundation
 import Observation
 import ReolinkAudio
@@ -85,8 +84,6 @@ final class TalkController {
         didSet { if oldValue != isPushToTalkHeld { updateListening() } }
     }
 
-    /// A refused talk borrows the one global banner, the same as a refused
-    /// control command.
     /// Unmutes a camera's tile so the far end can be heard, and mutes it again
     /// while the microphone is live.
     ///
@@ -96,6 +93,9 @@ final class TalkController {
     /// speaker back into this Mac's microphone and howls, so talk is
     /// half duplex here whatever `TalkAbility` says it supports.
     @ObservationIgnored var onListen: (@MainActor (String, Bool) -> Void)?
+
+    /// A refused talk borrows the one global banner, the same as a refused
+    /// control command.
     @ObservationIgnored var onFailure: (@MainActor (String) -> Void)?
     @ObservationIgnored var onSuccess: (@MainActor () -> Void)?
 
@@ -120,11 +120,22 @@ final class TalkController {
     /// replacement has already started, and must not write `idle` over it.
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var idleTask: Task<Void, Never>?
-    @ObservationIgnored private var mouseUpMonitor: Any?
-    @ObservationIgnored private var resignObserver: (any NSObjectProtocol)?
+
+    /// The same discipline as the PTZ pad. A mouse-up outside the button, or
+    /// the app losing focus mid-press, never reaches the gesture that started
+    /// the press, and a talk session left open holds the camera's audio path.
+    ///
+    /// Resigning active stops a phrase as well as a held button: an app that is
+    /// not in front is not being watched, and the camera's speaker is a room
+    /// the user cannot see.
+    @ObservationIgnored private var lostRelease: LostReleaseWatcher?
 
     init(config: ConfigStore) {
         self.config = config
+        lostRelease = LostReleaseWatcher(
+            onMouseUp: { [weak self] in self?.stopPushToTalk() },
+            onResignActive: { [weak self] in self?.stop() }
+        )
     }
 
     // MARK: - What the camera offers
@@ -156,8 +167,6 @@ final class TalkController {
 
     // MARK: - Push to talk
 
-    /// The press half. The session stays open until ``stopPushToTalk()``, a
-    /// lost mouse-up, the app resigning active, or a failure.
     /// The talk panel is open on this camera's tile. While it is, the tile is
     /// unmuted so the visitor can be heard.
     func setPanelOpen(_ open: Bool, for camera: Camera?) {
@@ -178,6 +187,8 @@ final class TalkController {
         if let new = wanted { onListen?(new, true) }
     }
 
+    /// The press half. The session stays open until ``stopPushToTalk()``, a
+    /// lost mouse-up, the app resigning active, or a failure.
     func startPushToTalk(to camera: Camera) {
         guard !isPushToTalkHeld else { return }
         isPushToTalkHeld = true
@@ -233,7 +244,7 @@ final class TalkController {
         runner = nil
         idleTask?.cancel()
         idleTask = nil
-        stopWatchingForLostRelease()
+        lostRelease?.stop()
         await disconnectClient()
         activity = .idle
         activeCameraID = nil
@@ -277,7 +288,7 @@ final class TalkController {
         let generation = generation
         activity = .connecting
         activeCameraID = target.cameraID
-        watchForLostRelease()
+        lostRelease?.start()
 
         runner = Task { [weak self] in
             await previous?.value
@@ -306,7 +317,7 @@ final class TalkController {
         // and the monitors: the job that replaced it owns both now.
         let isCurrent = generation == self.generation
         if isCurrent {
-            stopWatchingForLostRelease()
+            lostRelease?.stop()
             activeCameraID = nil
         }
 
@@ -485,40 +496,6 @@ final class TalkController {
         default:
             throw TalkError.microphoneDenied
         }
-    }
-
-    // MARK: - Releases the gesture never sees
-
-    /// The same discipline as the PTZ pad. A mouse-up outside the button, or
-    /// the app losing focus mid-press, never reaches the gesture that started
-    /// the press, and a talk session left open holds the camera's audio path.
-    ///
-    /// Resigning active stops a phrase as well as a held button: an app that is
-    /// not in front is not being watched, and the camera's speaker is a room
-    /// the user cannot see.
-    private func watchForLostRelease() {
-        if mouseUpMonitor == nil {
-            mouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
-                MainActor.assumeIsolated { self.stopPushToTalk() }
-                return event
-            }
-        }
-        if resignObserver == nil {
-            resignObserver = NotificationCenter.default.addObserver(
-                forName: NSApplication.willResignActiveNotification,
-                object: nil,
-                queue: .main
-            ) { _ in
-                MainActor.assumeIsolated { self.stop() }
-            }
-        }
-    }
-
-    private func stopWatchingForLostRelease() {
-        if let mouseUpMonitor { NSEvent.removeMonitor(mouseUpMonitor) }
-        mouseUpMonitor = nil
-        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
-        resignObserver = nil
     }
 }
 

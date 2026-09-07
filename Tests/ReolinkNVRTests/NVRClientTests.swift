@@ -4,8 +4,8 @@ import Testing
 
 private let credentials = Credentials(user: "viewer", password: "s3cr3t")
 
-private func makeClient(_ transport: FixtureTransport) -> NVRClient {
-    NVRClient(host: "192.168.8.215", credentials: credentials, transport: transport)
+private func makeClient(_ transport: any Transport) -> NVRClient {
+    NVRClient(host: "192.0.2.10", credentials: credentials, transport: transport)
 }
 
 @Suite("Request shape")
@@ -18,7 +18,7 @@ struct RequestShapeTests {
         try await client.login()
 
         let sent = try #require(await transport.sent.first)
-        #expect(sent.url.absoluteString == "https://192.168.8.215/api.cgi?cmd=Login")
+        #expect(sent.url.absoluteString == "https://192.0.2.10/api.cgi?cmd=Login")
         #expect(sent.token == nil)
 
         let element = try #require(sent.bodyElements.first)
@@ -44,7 +44,7 @@ struct RequestShapeTests {
 
         let events = try #require(await transport.requests(cmd: "GetEvents").first)
         #expect(await transport.sent.count == 2, "one login and one batched POST")
-        #expect(events.url.absoluteString == "https://192.168.8.215/api.cgi?cmd=GetEvents&token=e7d2c8f0a1b34567")
+        #expect(events.url.absoluteString == "https://192.0.2.10/api.cgi?cmd=GetEvents&token=e7d2c8f0a1b34567")
         #expect(events.request.method == "POST")
         #expect(events.request.contentType == "application/json")
 
@@ -160,6 +160,109 @@ struct TokenRefreshTests {
         try await client.logout()
         #expect(await client.isLoggedIn == false)
         #expect(await transport.requests(cmd: "Logout").count == 1)
+    }
+}
+
+@Suite("Request serialisation")
+struct RequestSerialisationTests {
+    @Test("Round trips never overlap")
+    func roundTripsNeverOverlap() async throws {
+        let probe = SerialisationProbe()
+        let client = makeClient(probe)
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for channel in 0 ..< 8 {
+                group.addTask { _ = try await client.send(GetDevInfo(), channel: channel) }
+            }
+            try await group.waitForAll()
+        }
+
+        #expect(await probe.maximumOverlap == 1)
+        #expect(await probe.arrivals.count == 8)
+    }
+
+    @Test("Queued callers keep their arrival order")
+    func queuedCallersKeepTheirOrder() async throws {
+        let probe = SerialisationProbe()
+        let client = makeClient(probe)
+        try await client.login()
+
+        await probe.holdTheNextRequest()
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { _ = try await client.send(GetDevInfo(), channel: 0) }
+            // The first caller holds the slot until the test lets it go, so the
+            // rest queue, and each one is in the queue before the next starts.
+            try await waitUntil { await probe.arrivals.count == 1 }
+
+            for channel in 1 ..< 6 {
+                group.addTask { _ = try await client.send(GetDevInfo(), channel: channel) }
+                try await waitUntil { await client.queuedRequestCount == channel }
+            }
+
+            await probe.releaseTheHeldRequest()
+            try await group.waitForAll()
+        }
+
+        #expect(await probe.arrivals == Array(0 ..< 6))
+        #expect(await probe.maximumOverlap == 1)
+    }
+
+    /// Polls until `condition` holds, and fails the test if it never does.
+    private func waitUntil(
+        _ condition: () async -> Bool,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        for _ in 0 ..< 2000 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        Issue.record("The condition never held", sourceLocation: sourceLocation)
+    }
+}
+
+/// Answers like a healthy NVR, and records how the round trips are spaced.
+///
+/// The sleep stands in for the network. Without a suspension here the client
+/// could not overlap two requests even if it tried, so the test would pass on
+/// a client that does not serialise.
+actor SerialisationProbe: Transport {
+    private(set) var maximumOverlap = 0
+    /// The channel of every `GetDevInfo`, in the order the requests arrive.
+    private(set) var arrivals: [Int] = []
+
+    private var inFlight = 0
+    private var holdsTheNextRequest = false
+    private var held: CheckedContinuation<Void, Never>?
+
+    func holdTheNextRequest() {
+        holdsTheNextRequest = true
+    }
+
+    func releaseTheHeldRequest() {
+        held?.resume()
+        held = nil
+    }
+
+    func send(_ request: TransportRequest) async throws -> TransportResponse {
+        inFlight += 1
+        maximumOverlap = max(maximumOverlap, inFlight)
+        defer { inFlight -= 1 }
+
+        let element = (try? JSONSerialization.jsonObject(with: request.body ?? Data())) as? [[String: Any]]
+        let cmd = element?.first?["cmd"] as? String
+        if cmd == GetDevInfo.cmd, let channel = (element?.first?["param"] as? [String: Any])?["channel"] as? Int {
+            arrivals.append(channel)
+        }
+
+        if holdsTheNextRequest {
+            holdsTheNextRequest = false
+            await withCheckedContinuation { held = $0 }
+        } else {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+
+        return .ok(cmd == Login.cmd ? Fixture.login : Fixture.devInfo)
     }
 }
 

@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import Observation
 import ReolinkNVR
@@ -131,8 +130,11 @@ final class ControlsStore {
     @ObservationIgnored private var ptzChain: Task<Void, Never>?
 
     @ObservationIgnored private var activeMove: (cameraID: String, channel: Int)?
-    @ObservationIgnored private var mouseUpMonitor: Any?
-    @ObservationIgnored private var resignObserver: (any NSObjectProtocol)?
+
+    /// A mouse-up outside the button, or the app losing focus mid-press, would
+    /// otherwise never reach the gesture that started the move, and the camera
+    /// would turn until it hit its stop.
+    @ObservationIgnored private var lostRelease: LostReleaseWatcher?
 
     @ObservationIgnored private var zoomSender: LatestValueSender?
     @ObservationIgnored private var volumeSender: LatestValueSender?
@@ -152,6 +154,11 @@ final class ControlsStore {
         self.onFailure = onFailure
         self.onSuccess = onSuccess
         camerasByID = Dictionary(cameras.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        lostRelease = LostReleaseWatcher(
+            onMouseUp: { [weak self] in self?.stopMove() },
+            onResignActive: { [weak self] in self?.stopMove() }
+        )
 
         zoomSender = LatestValueSender { [weak self] cameraID, value in
             await self?.sendZoom(value, cameraID: cameraID)
@@ -270,11 +277,19 @@ final class ControlsStore {
 
     // MARK: - Probing
 
-    /// What one channel's answer says about whether a command exists.
+    /// What one channel's answer says about whether a command exists. A reply
+    /// that is not an error is the `present` case, which no failure can be.
     private enum ProbeOutcome {
         case present
         case absent
         case inconclusive
+
+        init(_ presence: ReolinkError.CommandPresence) {
+            switch presence {
+            case .absent: self = .absent
+            case .inconclusive: self = .inconclusive
+            }
+        }
     }
 
     /// A command counts as present as soon as one channel answers it. It only
@@ -300,31 +315,23 @@ final class ControlsStore {
         apply: @MainActor (C.Response) -> Void
     ) async {
         var tally = tallies[C.cmd] ?? ProbeTally()
+        let outcome: ProbeOutcome
         do {
             apply(try await client.send(command, channel: camera.channel))
-            tally.sawPresent = true
+            outcome = .present
         } catch {
-            switch Self.outcome(of: error) {
-            case .absent: tally.sawAbsent = true
-            case .present, .inconclusive: tally.sawInconclusive = true
-            }
+            outcome = ProbeOutcome(error.commandPresence)
             Log.controls.info(
                 "\(C.cmd, privacy: .public) on channel \(camera.channel) failed: \(error.localizedDescription, privacy: .public)"
             )
         }
-        tallies[C.cmd] = tally
-    }
 
-    /// The same rule `EventPoller` uses for `GetEvents`. A refusal from the NVR,
-    /// or a body this app cannot read, both mean the command is unusable. A
-    /// transport failure says nothing either way.
-    private static func outcome(of error: any Error) -> ProbeOutcome {
-        guard let error = error as? ReolinkError else { return .inconclusive }
-        switch error {
-        case let .api(_, rspCode, _): return rspCode == ReolinkError.badTokenCode ? .inconclusive : .absent
-        case .decoding: return .absent
-        case .transport, .httpStatus, .authentication: return .inconclusive
+        switch outcome {
+        case .present: tally.sawPresent = true
+        case .absent: tally.sawAbsent = true
+        case .inconclusive: tally.sawInconclusive = true
         }
+        tallies[C.cmd] = tally
     }
 
     private func read<C: NVRCommand>(
@@ -349,7 +356,7 @@ final class ControlsStore {
         if activeMove != nil { stopMove() }
 
         activeMove = (cameraID, camera.channel)
-        watchForLostRelease()
+        lostRelease?.start()
 
         let speed = capabilities.supportsPtzSpeed(channel: camera.channel) ? PtzCtrl.defaultSpeed : nil
         enqueuePtz(PtzCtrl(move: direction, speed: speed), channel: camera.channel)
@@ -360,35 +367,8 @@ final class ControlsStore {
     func stopMove() {
         guard let move = activeMove else { return }
         activeMove = nil
-        stopWatchingForLostRelease()
+        lostRelease?.stop()
         enqueuePtz(PtzCtrl.stop, channel: move.channel)
-    }
-
-    /// A mouse-up outside the button, or the app losing focus mid-press, would
-    /// otherwise never reach the gesture that started the move, and the camera
-    /// would turn until it hit its stop. AppKit delivers the mouse-up to the
-    /// window that took the mouse-down whatever is under the pointer, so this
-    /// catches the releases the gesture misses.
-    private func watchForLostRelease() {
-        guard mouseUpMonitor == nil else { return }
-        mouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
-            MainActor.assumeIsolated { self.stopMove() }
-            return event
-        }
-        resignObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.willResignActiveNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            MainActor.assumeIsolated { self.stopMove() }
-        }
-    }
-
-    private func stopWatchingForLostRelease() {
-        if let mouseUpMonitor { NSEvent.removeMonitor(mouseUpMonitor) }
-        mouseUpMonitor = nil
-        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
-        resignObserver = nil
     }
 
     /// Keeps `PtzCtrl` in the order it was asked for. A failed move does not

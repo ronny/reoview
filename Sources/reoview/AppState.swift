@@ -576,8 +576,8 @@ final class AppState {
     private func listenToCamera(_ cameraID: String, _ listening: Bool) {
         if listening {
             guard mutedBeforeTalk == nil else { return }
-            let sources = tileOrder.filter { $0.hasPrefix(cameraID + "/") }
-            guard let sourceID = sources.first else { return }
+            guard let sourceID = tileOrder.first(where: { sourcesByID[$0]?.cameraID == cameraID })
+            else { return }
             mutedBeforeTalk = (sourceID, config.config.mutedBySourceID[sourceID] ?? true)
             setMuted(false, sourceID: sourceID)
         } else {

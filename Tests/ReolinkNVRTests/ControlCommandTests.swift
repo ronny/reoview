@@ -22,7 +22,7 @@ struct ControlRequestShapeTests {
             Fixture.acknowledgement("PtzCtrl"),
         ])
         let client = NVRClient(
-            host: "192.168.8.215",
+            host: "192.0.2.10",
             credentials: Credentials(user: "viewer", password: "s3cr3t"),
             transport: transport
         )

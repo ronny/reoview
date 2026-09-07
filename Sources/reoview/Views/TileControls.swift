@@ -104,7 +104,7 @@ private struct ControlsOverlay: View {
                 talk.setPanelOpen(new == .talk, for: camera)
             }
             // The tile can go away mid-press: a layout change, a focus change,
-            // or the panel itself collapsing. `PtzButton.onDisappear` covers the
+            // or the panel itself collapsing. `HoldButton.onDisappear` covers the
             // pad, and this covers the whole overlay.
             // A talk session left open holds the camera's audio path, the
             // same way a held PTZ button leaves the camera turning.
@@ -317,7 +317,7 @@ private struct ControlsOverlay: View {
     // MARK: - Opening and closing
 
     /// A held PTZ button that is taken off screen must still release the
-    /// camera. `PtzButton.onDisappear` does that, but SwiftUI can defer a
+    /// camera. `HoldButton.onDisappear` does that, but SwiftUI can defer a
     /// removal, and a camera left turning is the worst failure this app has, so
     /// the stop goes out before the pad can leave.
     private func toggle(_ group: ControlGroup) {
@@ -495,42 +495,46 @@ private struct PtzPad: View {
         shown: Bool
     ) -> some View {
         if shown {
-            PtzButton(symbol: symbol, label: label) {
+            HoldButton {
                 onPress(direction)
             } onRelease: {
                 onRelease()
+            } label: { isPressed in
+                Image(systemName: symbol)
+                    .frame(width: ui.length(26), height: ui.length(20))
+                    .background(
+                        isPressed ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.18),
+                        in: .rect(cornerRadius: 4)
+                    )
             }
+            .help(label)
+            .accessibilityLabel(label)
         } else {
             Color.clear.frame(width: ui.length(26), height: ui.length(20))
         }
     }
 }
 
-/// One direction of the pad.
+/// A control that acts on the way down and again on the way up: a PTZ
+/// direction, or push-to-talk.
 ///
 /// A `Button` fires on mouse-up and a long-press gesture waits out its delay,
 /// so neither can start the movement on the way down. A zero-distance drag
 /// gesture reports both halves of the press. Its `onEnded` runs on mouse-up
-/// wherever the pointer has wandered to, and `onDisappear` covers the pad going
-/// away mid-press, which now also happens when the group is collapsed;
-/// `ControlsStore` watches for the releases that reach neither.
-private struct PtzButton: View {
-    @Environment(\.uiScale) private var ui
-
-    let symbol: String
-    let label: String
+/// wherever the pointer has wandered to, and `onDisappear` covers the button
+/// going away mid-press, which also happens when the group is collapsed;
+/// `LostReleaseWatcher` catches the releases that reach neither.
+///
+/// `label` is given the pressed state, for the views that draw it themselves.
+private struct HoldButton<Label: View>: View {
     var onPress: () -> Void
     var onRelease: () -> Void
+    @ViewBuilder var label: (Bool) -> Label
 
     @State private var isPressed = false
 
     var body: some View {
-        Image(systemName: symbol)
-            .frame(width: ui.length(26), height: ui.length(20))
-            .background(
-                isPressed ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.18),
-                in: .rect(cornerRadius: 4)
-            )
+        label(isPressed)
             .contentShape(.rect)
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -538,8 +542,6 @@ private struct PtzButton: View {
                     .onEnded { _ in release() }
             )
             .onDisappear { release() }
-            .help(label)
-            .accessibilityLabel(label)
     }
 
     private func press() {
@@ -632,10 +634,9 @@ private extension Double {
 
 /// Push to talk, and the saved phrases.
 ///
-/// The button follows the same press-and-release discipline as the PTZ pad: a
-/// zero-distance drag reports both halves, `onDisappear` covers the panel going
-/// away mid-press, and `TalkController` watches for the releases that reach
-/// neither.
+/// The button follows the same press-and-release discipline as the PTZ pad:
+/// both share ``HoldButton``, and `TalkController` watches for the releases
+/// that reach neither half of it.
 private struct TalkPanel: View {
     @Environment(\.uiScale) private var ui
 
@@ -685,6 +686,9 @@ private struct TalkPanel: View {
     }
 }
 
+/// The button follows the session rather than its own gesture: a press that
+/// `TalkController` refuses, or a session ended from anywhere else, must not
+/// leave the button looking live.
 private struct PushToTalkButton: View {
     @Environment(\.uiScale) private var ui
 
@@ -692,42 +696,23 @@ private struct PushToTalkButton: View {
     var onPress: () -> Void
     var onRelease: () -> Void
 
-    @State private var isPressed = false
-
     var body: some View {
-        HStack(spacing: ui.length(5)) {
-            Image(systemName: isHeld ? "mic.fill" : "mic")
-            Text("Hold to Talk")
+        HoldButton(onPress: onPress, onRelease: onRelease) { _ in
+            HStack(spacing: ui.length(5)) {
+                Image(systemName: isHeld ? "mic.fill" : "mic")
+                Text("Hold to Talk")
+            }
+            .font(ui.font(12, weight: .semibold))
+            .foregroundStyle(isHeld ? Color.white : .primary)
+            .padding(.horizontal, ui.length(10))
+            .frame(height: ui.length(24))
+            .background(
+                isHeld ? Color.red.opacity(0.9) : Color.secondary.opacity(0.18),
+                in: .rect(cornerRadius: 5)
+            )
         }
-        .font(ui.font(12, weight: .semibold))
-        .foregroundStyle(isHeld ? Color.white : .primary)
-        .padding(.horizontal, ui.length(10))
-        .frame(height: ui.length(24))
-        .background(
-            isHeld ? Color.red.opacity(0.9) : Color.secondary.opacity(0.18),
-            in: .rect(cornerRadius: 5)
-        )
-        .contentShape(.rect)
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in press() }
-                .onEnded { _ in release() }
-        )
-        .onDisappear { release() }
         .help("Hold this button and speak. Release to stop.")
         .accessibilityLabel("Hold to talk")
-    }
-
-    private func press() {
-        guard !isPressed else { return }
-        isPressed = true
-        onPress()
-    }
-
-    private func release() {
-        guard isPressed else { return }
-        isPressed = false
-        onRelease()
     }
 }
 

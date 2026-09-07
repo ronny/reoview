@@ -1,6 +1,6 @@
 import Foundation
 
-/// Bytes and bodies recorded off the RLN8-410 at 192.168.8.215:9000,
+/// Bytes and bodies recorded off the RLN8-410 at 192.0.2.10:9000,
 /// firmware v3.6.5.562, on 2026-09-06. No audio was ever sent to it.
 enum Fixture {
     /// The nonce reply. 20-byte header, class `14 66`, and the two bytes at

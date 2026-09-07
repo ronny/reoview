@@ -2,9 +2,14 @@ import Foundation
 
 /// Talks to one Reolink host.
 ///
-/// The actor holds one HTTP request in flight at a time, because Reolink HTTP
+/// The client holds one HTTP request in flight at a time, because Reolink HTTP
 /// stacks are fragile under concurrency and the NVR caps concurrent sessions.
 /// Parallelism comes from batching many commands into one POST.
+///
+/// Being an actor does not give that on its own. `send` suspends at the
+/// transport call, and an actor lets the next caller in at every suspension, so
+/// the POSTs would overlap. A slot, held around the round trip and handed on in
+/// arrival order, is what keeps them apart.
 public actor NVRClient {
     private let host: String
     private let credentials: Credentials
@@ -12,6 +17,9 @@ public actor NVRClient {
 
     private var token: String?
     private var loginTask: Task<String, Error>?
+
+    private var roundTripInFlight = false
+    private var waitingForSlot: [CheckedContinuation<Void, Never>] = []
 
     public init(host: String, credentials: Credentials, transport: any Transport) {
         self.host = host
@@ -88,9 +96,9 @@ public actor NVRClient {
         // The task, not its caller, publishes the token. A caller cannot do it
         // after `await`, because the other waiters resume in any order and
         // would read the token that was just rejected.
-        let task = Task<String, Error> { [host, credentials, transport] in
+        let task = Task<String, Error> {
             defer { self.loginTask = nil }
-            let fresh = try await Self.performLogin(host: host, credentials: credentials, transport: transport)
+            let fresh = try await self.performLogin()
             self.token = fresh
             return fresh
         }
@@ -98,14 +106,10 @@ public actor NVRClient {
         return try await task.value
     }
 
-    private nonisolated static func performLogin(
-        host: String,
-        credentials: Credentials,
-        transport: any Transport
-    ) async throws -> String {
+    private func performLogin() async throws -> String {
         let body = try RequestBody.data(for: [(command: Login(credentials: credentials), channel: nil)])
         let request = TransportRequest(url: try Self.url(host: host, cmd: Login.cmd, token: nil), body: body)
-        let response = try await Self.roundTrip(request, through: transport)
+        let response = try await roundTrip(request)
 
         do {
             let logins: [Login.Response] = try Self.decode(response.body, cmd: Login.cmd, expecting: 1)
@@ -126,14 +130,20 @@ public actor NVRClient {
         expecting count: Int
     ) async throws -> [R] {
         let request = TransportRequest(url: try Self.url(host: host, cmd: cmd, token: token), body: body)
-        let response = try await Self.roundTrip(request, through: transport)
+        let response = try await roundTrip(request)
         return try Self.decode(response.body, cmd: cmd, expecting: count)
     }
 
-    private nonisolated static func roundTrip(
-        _ request: TransportRequest,
-        through transport: any Transport
-    ) async throws -> TransportResponse {
+    /// Sends one request, with no other request of this client in flight.
+    ///
+    /// Only the round trip takes the slot. Getting a token does not, and that
+    /// is what keeps the queue free of deadlock: a caller that meets a stale
+    /// token has already given the slot back, so the login it waits for can
+    /// take a slot of its own instead of queueing behind the caller.
+    private func roundTrip(_ request: TransportRequest) async throws -> TransportResponse {
+        await takeSlot()
+        defer { giveSlot() }
+
         let response: TransportResponse
         do {
             response = try await transport.send(request)
@@ -148,6 +158,28 @@ public actor NVRClient {
         }
         return response
     }
+
+    private func takeSlot() async {
+        guard roundTripInFlight else {
+            roundTripInFlight = true
+            return
+        }
+        await withCheckedContinuation { waitingForSlot.append($0) }
+    }
+
+    private func giveSlot() {
+        guard !waitingForSlot.isEmpty else {
+            roundTripInFlight = false
+            return
+        }
+        // The slot goes straight to the first waiter, so a caller that arrives
+        // now queues behind the waiters instead of overtaking them.
+        waitingForSlot.removeFirst().resume()
+    }
+
+    /// How many callers wait for the slot. Tests queue callers in a known order
+    /// with it.
+    var queuedRequestCount: Int { waitingForSlot.count }
 
     private nonisolated static func url(host: String, cmd: String, token: String?) throws -> URL {
         var string = "https://\(host)/api.cgi?cmd=\(cmd)"

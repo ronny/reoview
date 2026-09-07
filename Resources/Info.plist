@@ -9,9 +9,12 @@
     URLSession delegate decides that, not ATS.
   - NSUserNotificationUsageDescription. Not a real key. UNUserNotificationCenter
     asks at runtime and needs no Info.plist string.
-  - NSLocalNetworkUsageDescription. macOS 14 does not gate local network access.
-    macOS 15 and later do, and they show a generic prompt without this key. Add
-    it when the minimum rises, or to write the prompt text yourself.
+
+  NSLocalNetworkUsageDescription is present below. macOS 14 does not gate local
+  network access, but macOS 15 and later do, and without the key they show a
+  generic prompt. A refused or pending grant surfaces as
+  NSURLErrorNotConnectedToInternet, which reads as "the internet is offline"
+  about a device one hop away.
 -->
 <plist version="1.0">
 <dict>

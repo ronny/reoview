@@ -5,7 +5,7 @@ import Testing
 @Suite("Stream candidates")
 struct StreamResolverTests {
     private let resolver = StreamResolver(
-        host: "192.168.8.215",
+        host: "192.0.2.10",
         credentials: Credentials(user: "viewer", password: "p@ss word/1")
     )
 
@@ -16,10 +16,10 @@ struct StreamResolverTests {
         let source = StreamSource(cameraID: driveway, lens: .wide, quality: .main)
 
         #expect(resolver.candidates(for: source, channel: 1, codec: .h265).map(\.absoluteString) == [
-            "rtsp://viewer:p%40ss%20word%2F1@192.168.8.215:554/h265Preview_02_main",
-            "rtsp://viewer:p%40ss%20word%2F1@192.168.8.215:554/h264Preview_02_main",
-            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel1_main.bcs&user=viewer&password=p@ss%20word/1",
-            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel1_main.bcs&user=viewer&password=p%40ss%20word%2F1",
+            "rtsp://viewer:p%40ss%20word%2F1@192.0.2.10:554/h265Preview_02_main",
+            "rtsp://viewer:p%40ss%20word%2F1@192.0.2.10:554/h264Preview_02_main",
+            "https://192.0.2.10/flv?port=1935&app=bcs&stream=channel1_main.bcs&user=viewer&password=p@ss%20word/1",
+            "https://192.0.2.10/flv?port=1935&app=bcs&stream=channel1_main.bcs&user=viewer&password=p%40ss%20word%2F1",
         ])
     }
 
@@ -28,10 +28,10 @@ struct StreamResolverTests {
         let source = StreamSource(cameraID: "95270005AAAAAAAA", lens: .wide, quality: .sub)
 
         #expect(resolver.candidates(for: source, channel: 0, codec: .h264).map(\.absoluteString) == [
-            "rtsp://viewer:p%40ss%20word%2F1@192.168.8.215:554/h264Preview_01_sub",
-            "rtsp://viewer:p%40ss%20word%2F1@192.168.8.215:554/h265Preview_01_sub",
-            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel0_sub.bcs&user=viewer&password=p@ss%20word/1",
-            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel0_sub.bcs&user=viewer&password=p%40ss%20word%2F1",
+            "rtsp://viewer:p%40ss%20word%2F1@192.0.2.10:554/h264Preview_01_sub",
+            "rtsp://viewer:p%40ss%20word%2F1@192.0.2.10:554/h265Preview_01_sub",
+            "https://192.0.2.10/flv?port=1935&app=bcs&stream=channel0_sub.bcs&user=viewer&password=p@ss%20word/1",
+            "https://192.0.2.10/flv?port=1935&app=bcs&stream=channel0_sub.bcs&user=viewer&password=p%40ss%20word%2F1",
         ])
     }
 
@@ -42,9 +42,9 @@ struct StreamResolverTests {
             .map(\.absoluteString)
 
         #expect(candidates == [
-            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel1_ext.bcs&user=viewer&password=p@ss%20word/1",
-            "https://192.168.8.215/flv?port=1935&app=bcs&stream=channel1_ext.bcs&user=viewer&password=p%40ss%20word%2F1",
-            "rtsp://viewer:p%40ss%20word%2F1@192.168.8.215:554/Preview_02_autotrack",
+            "https://192.0.2.10/flv?port=1935&app=bcs&stream=channel1_ext.bcs&user=viewer&password=p@ss%20word/1",
+            "https://192.0.2.10/flv?port=1935&app=bcs&stream=channel1_ext.bcs&user=viewer&password=p%40ss%20word%2F1",
+            "rtsp://viewer:p%40ss%20word%2F1@192.0.2.10:554/Preview_02_autotrack",
         ])
     }
 
@@ -60,12 +60,12 @@ struct StreamResolverTests {
 
 @Suite("Certificate trust")
 struct TrustPolicyTests {
-    private let policy = TrustPolicy(host: "192.168.8.215")
+    private let policy = TrustPolicy(host: "192.0.2.10")
 
     @Test("The configured host's certificate is accepted, whatever its case")
     func acceptsTheConfiguredHost() {
         #expect(policy.acceptsSelfSignedCertificate(
-            challengeHost: "192.168.8.215",
+            challengeHost: "192.0.2.10",
             authenticationMethod: NSURLAuthenticationMethodServerTrust
         ))
         #expect(TrustPolicy(host: "NVR.local").acceptsSelfSignedCertificate(
@@ -85,7 +85,7 @@ struct TrustPolicyTests {
             authenticationMethod: NSURLAuthenticationMethodServerTrust
         ) == false)
         #expect(policy.acceptsSelfSignedCertificate(
-            challengeHost: "192.168.8.215",
+            challengeHost: "192.0.2.10",
             authenticationMethod: NSURLAuthenticationMethodHTTPBasic
         ) == false)
     }
