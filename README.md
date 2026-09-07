@@ -64,16 +64,14 @@ See [docs/build.md](docs/build.md).
 
 ## Credits
 
-The app icon uses the Material Symbols glyph `nest_cam_iq_outdoor`, from
-[google/material-design-icons](https://github.com/google/material-design-icons),
-under the Apache License 2.0. The blue is sampled from Reolink's own app icon so
-the two sit together in the Dock. Nothing of Reolink's own branding is used.
+ReoView is under the Apache License 2.0. See [LICENSE](LICENSE).
 
-Payload shapes for the HTTP API come from reading
-[starkillerOG/reolink_aio](https://github.com/starkillerOG/reolink_aio). The
-Baichuan protocol notes draw on that and on
-[QuantumEntangledAndy/neolink](https://github.com/QuantumEntangledAndy/neolink);
-sources are cited per claim in [docs/research](docs/research).
+VLCKit ships inside the application under the LGPL 2.1, the app icon uses a
+Material Symbols glyph under the Apache License 2.0, and the protocol work was
+learned by reading several open projects. [CREDITS.md](CREDITS.md) lists each
+one, its licence, and what a redistributor has to do about it.
+
+Not affiliated with Reolink.
 
 ## AI use disclosure
 
