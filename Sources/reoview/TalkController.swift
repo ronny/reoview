@@ -81,10 +81,21 @@ final class TalkController {
     /// indicator and the others cannot.
     private(set) var activeCameraID: String?
 
-    private(set) var isPushToTalkHeld = false
+    private(set) var isPushToTalkHeld = false {
+        didSet { if oldValue != isPushToTalkHeld { updateListening() } }
+    }
 
     /// A refused talk borrows the one global banner, the same as a refused
     /// control command.
+    /// Unmutes a camera's tile so the far end can be heard, and mutes it again
+    /// while the microphone is live.
+    ///
+    /// The visitor arrives on the RTSP stream, not on the talk channel, and
+    /// tiles start muted, so without this you can be heard but cannot hear.
+    /// Leaving it unmuted while the microphone is open feeds the doorbell
+    /// speaker back into this Mac's microphone and howls, so talk is
+    /// half duplex here whatever `TalkAbility` says it supports.
+    @ObservationIgnored var onListen: (@MainActor (String, Bool) -> Void)?
     @ObservationIgnored var onFailure: (@MainActor (String) -> Void)?
     @ObservationIgnored var onSuccess: (@MainActor () -> Void)?
 
@@ -147,6 +158,26 @@ final class TalkController {
 
     /// The press half. The session stays open until ``stopPushToTalk()``, a
     /// lost mouse-up, the app resigning active, or a failure.
+    /// The talk panel is open on this camera's tile. While it is, the tile is
+    /// unmuted so the visitor can be heard.
+    func setPanelOpen(_ open: Bool, for camera: Camera?) {
+        panelCameraID = open ? camera?.id : nil
+        updateListening()
+    }
+
+    private var panelCameraID: String?
+    @ObservationIgnored private var listeningCameraID: String?
+
+    private func updateListening() {
+        // Speak, then listen. Never both: the doorbell speaker reaches this
+        // Mac's microphone.
+        let wanted = isPushToTalkHeld ? nil : panelCameraID
+        guard wanted != listeningCameraID else { return }
+        if let old = listeningCameraID { onListen?(old, false) }
+        listeningCameraID = wanted
+        if let new = wanted { onListen?(new, true) }
+    }
+
     func startPushToTalk(to camera: Camera) {
         guard !isPushToTalkHeld else { return }
         isPushToTalkHeld = true

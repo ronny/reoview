@@ -99,6 +99,9 @@ private struct ControlsOverlay: View {
             .onHover { isHovering = $0 }
             .onChange(of: open) { _, new in
                 if new == nil { removeEscapeMonitor() } else { installEscapeMonitor() }
+                // Unmute the tile while the talk panel is open, so the visitor
+                // can be heard between presses.
+                talk.setPanelOpen(new == .talk, for: camera)
             }
             // The tile can go away mid-press: a layout change, a focus change,
             // or the panel itself collapsing. `PtzButton.onDisappear` covers the
@@ -109,6 +112,7 @@ private struct ControlsOverlay: View {
                 removeEscapeMonitor()
                 controls.stopMove()
                 talk.stop()
+                talk.setPanelOpen(false, for: camera)
             }
         }
     }

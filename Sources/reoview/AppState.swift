@@ -62,6 +62,9 @@ final class AppState {
         self.talk = TalkController(config: config)
         // A refused talk reuses the one global banner, the same as a refused
         // control command.
+        talk.onListen = { [weak self] cameraID, listening in
+            self?.listenToCamera(cameraID, listening)
+        }
         talk.onFailure = { [weak self] message in self?.noteControlFailure(message) }
         talk.onSuccess = { [weak self] in self?.clearControlFailure() }
     }
@@ -564,6 +567,27 @@ final class AppState {
         target.setMuted(muted)
         config.config.mutedBySourceID[sourceID] = muted
     }
+
+    /// Unmutes the tile of `cameraID` while a talk session is open, then puts
+    /// back whatever was there before.
+    ///
+    /// The visitor's voice arrives on the RTSP stream, not on the talk channel,
+    /// and tiles start muted, so without this you can be heard but cannot hear.
+    private func listenToCamera(_ cameraID: String, _ listening: Bool) {
+        if listening {
+            guard mutedBeforeTalk == nil else { return }
+            let sources = tileOrder.filter { $0.hasPrefix(cameraID + "/") }
+            guard let sourceID = sources.first else { return }
+            mutedBeforeTalk = (sourceID, config.config.mutedBySourceID[sourceID] ?? true)
+            setMuted(false, sourceID: sourceID)
+        } else {
+            guard let (sourceID, wasMuted) = mutedBeforeTalk else { return }
+            mutedBeforeTalk = nil
+            setMuted(wasMuted, sourceID: sourceID)
+        }
+    }
+
+    @ObservationIgnored private var mutedBeforeTalk: (sourceID: String, muted: Bool)?
 
     func toggleMuted(sourceID: String) {
         guard let controller = controllers[sourceID] else { return }
