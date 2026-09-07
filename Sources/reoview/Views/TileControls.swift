@@ -75,6 +75,25 @@ private struct ControlsOverlay: View {
                 .padding(ui.length(8))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            // The siren sits apart from the rest, on the other side of the
+            // tile. It is the only control here that makes a noise outside the
+            // house, so it should not be a neighbour of anything you reach for
+            // often.
+            .overlay(alignment: .bottomTrailing) {
+                if hasSiren {
+                    IconButton(
+                        // A beacon, not a speaker: the speaker symbols read as volume.
+                        symbol: values.sirenOn ? "light.beacon.max.fill" : "light.beacon.max",
+                        help: values.sirenOn ? "Stop the siren" : "Sound the siren on the camera",
+                        isOn: values.sirenOn,
+                        tint: .red,
+                        isBusy: values.busy.contains(.siren)
+                    ) { controls.setSiren(!values.sirenOn, cameraID: camera.id) }
+                        .padding(ui.length(3))
+                        .background(.ultraThinMaterial, in: .capsule)
+                        .padding(ui.length(8))
+                }
+            }
             .opacity(isHovering || open != nil ? 1 : 0.55)
             .animation(.easeInOut(duration: 0.12), value: isHovering)
             .onHover { isHovering = $0 }
@@ -130,16 +149,6 @@ private struct ControlsOverlay: View {
                     isOn: values.autoTrackOn,
                     isBusy: values.busy.contains(.autoTrack)
                 ) { controls.setAutoTrack(!values.autoTrackOn, cameraID: camera.id) }
-            }
-            if hasSiren {
-                IconButton(
-                    // A beacon, not a speaker: the speaker symbols read as volume.
-                    symbol: values.sirenOn ? "light.beacon.max.fill" : "light.beacon.max",
-                    help: values.sirenOn ? "Stop the siren" : "Sound the siren on the camera",
-                    isOn: values.sirenOn,
-                    tint: .red,
-                    isBusy: values.busy.contains(.siren)
-                ) { controls.setSiren(!values.sirenOn, cameraID: camera.id) }
             }
             if hasTalk {
                 groupIcon(.talk, "mic", "Talk to the camera, or say one of the saved phrases")
